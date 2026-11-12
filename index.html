@@ -124,6 +124,16 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 .flag{background:#3A1F3A;border:2px solid #FF8C8C;border-radius:16px;padding:12px 14px;display:flex;gap:10px;align-items:center}
 .flag .t{flex:1;font-weight:700;font-size:15px}
 .panel>*{flex-shrink:0}
+
+.poster{display:block;width:100%;max-height:58vh;object-fit:contain;border-radius:18px;margin:0 auto 6px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.album{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.acard{position:relative;padding:0;border:0;border-radius:14px;overflow:hidden;background:#241D66;aspect-ratio:2/3;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.acard img{width:100%;height:100%;object-fit:cover;display:block}
+.acard.lock{background:radial-gradient(circle at 50% 35%,#5B4BDB,#241D66 70%);border:2px dashed #6A5FD0}
+.acard .al{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#E6E1FF}
+.acard .al b{font-size:13px}
+.acard .al em{font-style:normal;font-size:38px;font-weight:800;color:#FFE08A;line-height:1}
+.acard .anew{position:absolute;top:6px;left:6px;background:#FFC23D;color:#1B1650;font-style:normal;font-weight:800;font-size:11px;padding:3px 7px;border-radius:999px}
 </style>
 </head>
 <body>
@@ -169,6 +179,8 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
     <p class="sub" id="powersSub"></p>
     <div id="tierList" style="display:flex;flex-direction:column;gap:10px"></div>
     <p class="hint center">Un pouvoir gagné reste gagné, pour toujours.</p>
+    <p class="sect" style="display:flex;justify-content:space-between">Mes cartes d'aventure <span id="albumCount" style="color:#FFE08A"></span></p>
+    <div id="album" class="album"></div>
   </section>
 
   <section class="screen" id="s-pride">
@@ -191,6 +203,7 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
     <p class="sect">Mon compagnon</p>
     <div id="petBox"></div>
     <p class="sect">Mes grands frères</p>
+    <div id="heroBros" style="display:flex;flex-direction:column;gap:10px"></div>
     <div id="allyList" style="display:flex;flex-direction:column;gap:10px"></div>
     <p class="sect">Leurs messages</p>
     <div id="msgList" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -6332,6 +6345,325 @@ Object.assign(window.__GL={}, { GLTFLoader });
 window.GLTFLoader=window.__GL.GLTFLoader;
 })();
 </script>
+<script>// Cartoon rig for single-mesh creatures (no skeleton): every body part is found by its position
+// in the model (fractions of the mesh's bounding box) and deformed in the vertex shader.
+// Parts: wings (flap), eyes (blink), head (look around), front/hind paws (lift), tail (sway).
+window.addCreature = function (root, cfg) {
+  var T = THREE, uniforms = [];
+  root.traverse(function (o) {
+    if (!o.isMesh) return;
+    var g = o.geometry; g.computeBoundingBox();
+    var bb = g.boundingBox, W = bb.max.x - bb.min.x, H = bb.max.y - bb.min.y, D = bb.max.z - bb.min.z;
+    var X = function (f) { return bb.min.x + W * f; }, Y = function (f) { return bb.min.y + H * f; }, Z = function (f) { return bb.min.z + D * f; };
+    // wings: centre = median x, so a tail on one side does not shift it
+    var pa = g.attributes.position, xs = [];
+    for (var i = 0; i < pa.count; i += 7) xs.push(pa.getX(i));
+    xs.sort(function (a, b) { return a - b; });
+    var cx = xs[xs.length >> 1], hwR = bb.max.x - cx, hwL = cx - bb.min.x;
+    var wg = cfg.wings || { start: 9, pivY: 0.5 }, e = cfg.eyes || { L: 0, R: 0, y: -9, rx: 0.01, ry: 0.01, z: 9 }, h = cfg.head || { x0: 0, x1: 0, neckY: 9, z: 9, piv: [0.5, 0.5, 0.5] };
+    var lg = cfg.legs || { L: [9, 9], R: [9, 9], top: 0, z: 9, hind: [9, 9] }, tl = cfg.tail || { z: -9, top: 0, px: 0.5, len: 1 };
+    var u = {
+      uFlapT: { value: 0 }, uAmp: { value: wg.amp || 0.4 }, uFold: { value: 0 },
+      uStartL: { value: hwL * wg.start }, uStartR: { value: hwR * wg.start }, uFeather: { value: Math.max(hwL, hwR) * 0.25 },
+      uCx: { value: cx }, uPivY: { value: Y(wg.pivY) }, uYLow: { value: Y(wg.yLow || 0) - (wg.yLow ? 0 : H) }, uYF: { value: H * 0.12 },
+      uBlink: { value: 0 }, uEyeL: { value: X(e.L) }, uEyeR: { value: X(e.R) }, uEyeY: { value: Y(e.y) }, uEyeRX: { value: W * e.rx }, uEyeRY: { value: H * e.ry }, uEyeZ: { value: Z(e.z) }, uEyeZF: { value: D * (e.zf || 0.12) },
+      uHead: { value: new T.Vector3() }, uHeadX0: { value: X(h.x0) }, uHeadX1: { value: X(h.x1) }, uNeckY: { value: Y(h.neckY) }, uNeckF: { value: H * 0.07 }, uHeadZ: { value: Z(h.z) }, uHeadZF: { value: D * 0.08 },
+      uPiv: { value: new T.Vector3(X(h.piv[0]), Y(h.piv[1]), Z(h.piv[2])) }, uHeadWings: { value: h.withWings ? 1 : 0 },
+      uLegL: { value: 0 }, uLegR: { value: 0 }, uLegH: { value: 0 }, uMinY: { value: bb.min.y }, uLegTop: { value: H * lg.top },
+      uLLx0: { value: X(lg.L[0]) }, uLLx1: { value: X(lg.L[1]) }, uLRx0: { value: X(lg.R[0]) }, uLRx1: { value: X(lg.R[1]) }, uLegZ: { value: Z(lg.z) }, uHindZ0: { value: Z(lg.hind[0]) }, uHindZ1: { value: Z(lg.hind[1]) }, uLF: { value: Math.min(W, D) * 0.03 },
+      uTail: { value: 0 }, uTailUp: { value: 0 }, uTailZ: { value: Z(tl.z) }, uTailTop: { value: Y(tl.top) }, uTailPX: { value: X(tl.px) }, uTailLen: { value: D * tl.len }, uTailF: { value: D * 0.06 }
+    };
+    var decl = Object.keys(u).map(function (k) { return 'uniform ' + (k === 'uHead' || k === 'uPiv' ? 'vec3 ' : 'float ') + k + ';'; }).join('\n');
+    var mat = o.material.clone();
+    mat.onBeforeCompile = function (sh) {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = decl + '\nfloat band(float x, float a, float b, float f) { return smoothstep(a - f, a, x) * (1.0 - smoothstep(b, b + f, x)); }\n' +
+        'mat3 rotXYZ(vec3 r) { float cy = cos(r.x), sy = sin(r.x), cp = cos(r.y), sp = sin(r.y), cr = cos(r.z), sr = sin(r.z);\n' +
+        '  mat3 Ry = mat3(cy, 0.0, -sy, 0.0, 1.0, 0.0, sy, 0.0, cy); mat3 Rx = mat3(1.0, 0.0, 0.0, 0.0, cp, sp, 0.0, -sp, cp); mat3 Rz = mat3(cr, sr, 0.0, -sr, cr, 0.0, 0.0, 0.0, 1.0); return Ry * Rx * Rz; }\n' +
+        sh.vertexShader.replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          'vec3 P = transformed;',
+          // blink: squeeze the eyes shut along Y
+          'float dL = length(vec2((P.x - uEyeL) / uEyeRX, (P.y - uEyeY) / uEyeRY));',
+          'float dR = length(vec2((P.x - uEyeR) / uEyeRX, (P.y - uEyeY) / uEyeRY));',
+          'float we = (1.0 - smoothstep(0.85, 1.6, min(dL, dR))) * smoothstep(uEyeZ - uEyeZF, uEyeZ, P.z);',
+          'P.y = uEyeY + (P.y - uEyeY) * (1.0 - 0.92 * uBlink * we);',
+          // paws: lift the bottom of each leg, most at the toes
+          'float lf = 1.0 - smoothstep(0.0, uLegTop, P.y - uMinY);',
+          'float wl = band(P.x, uLLx0, uLLx1, uLF), wr = band(P.x, uLRx0, uLRx1, uLF);',
+          'float fz = smoothstep(uLegZ - uLF * 2.0, uLegZ, P.z), hz = band(P.z, uHindZ0, uHindZ1, uLF * 2.0);',
+          'float lift = (uLegL * wl + uLegR * wr) * fz + uLegH * (wl + wr) * hz;',
+          'P.y += lift * lf; P.z += lift * lf * 0.35;',
+          // tail: sways, more and more towards the tip
+          'float wt = (1.0 - smoothstep(uTailZ, uTailZ + uTailF, P.z)) * (1.0 - smoothstep(uTailTop, uTailTop + uTailF, P.y));',
+          'float al = clamp((uTailZ - P.z) / uTailLen, 0.0, 1.4);',
+          'float ta = uTail * wt * al; vec2 tq = vec2(P.x - uTailPX, P.z - uTailZ);',
+          'P.x = uTailPX + tq.x * cos(ta) - tq.y * sin(ta); P.z = uTailZ + tq.x * sin(ta) + tq.y * cos(ta); P.y += uTailUp * wt * al * al;',
+          // wings
+          'float sx = sign(P.x - uCx); float ax = abs(P.x - uCx); float st0 = sx > 0.0 ? uStartR : uStartL;',
+          'float ww = smoothstep(st0, st0 + uFeather, ax) * smoothstep(uYLow, uYLow + uYF, P.y);',
+          'float ang = (sin(uFlapT) * uAmp + uFold) * ww * sx;',
+          'vec2 wp = vec2(P.x - (uCx + sx * st0), P.y - uPivY);',
+          'P.x = uCx + sx * st0 + wp.x * cos(ang) - wp.y * sin(ang); P.y = uPivY + wp.x * sin(ang) + wp.y * cos(ang);',
+          // head: turns, nods and tilts around the neck
+          'float wh = smoothstep(uNeckY, uNeckY + uNeckF, P.y) * smoothstep(uHeadZ - uHeadZF, uHeadZ, P.z) * band(P.x, uHeadX0, uHeadX1, uNeckF) * mix(1.0 - ww, 1.0, uHeadWings);',
+          'P = uPiv + rotXYZ(uHead * wh) * (P - uPiv);',
+          'transformed = P;'
+        ].join('\n'));
+    };
+    mat.customProgramCacheKey = function () { return 'creature'; };
+    o.material = mat; uniforms.push(u);
+  });
+  var set = function (k, v) { uniforms.forEach(function (u) { if (u[k].value && u[k].value.isVector3) u[k].value.copy(v); else u[k].value = v; }); };
+  // mouth position in the model's own space, for fire puffs
+  var mouth = null;
+  if (cfg.mouth) { root.traverse(function (o) { if (o.isMesh && !mouth) { var bb = o.geometry.boundingBox; mouth = new T.Vector3(bb.min.x + (bb.max.x - bb.min.x) * cfg.mouth[0], bb.min.y + (bb.max.y - bb.min.y) * cfg.mouth[1], bb.min.z + (bb.max.z - bb.min.z) * cfg.mouth[2]); } }); }
+
+  // --- cartoon behaviour ("brain"): blinks, glances, tail wags, paw taps, wing stretches ---
+  var S = { t: 0, nextBlink: 1 + Math.random() * 2, blink: -1, dbl: false, head: new T.Vector3(), hv: new T.Vector3(), target: new T.Vector3(), nextLook: 0.5,
+    tailPh: 0, tailAmp: 0.18, nextPaw: 3, paw: -1, pawSide: 0, flapPh: 0, stretch: -1, nextStretch: 6, happy: 0, roar: 0, fire: 0 };
+  var tmp = new T.Vector3();
+  function update(dt, mode) {
+    // mode: 'idle' | 'fly' | 'flutter' (small flyers) | 'roar' | 'still'
+    S.t += dt;
+    // blinking, sometimes twice in a row
+    if (S.blink < 0 && S.t > S.nextBlink) { S.blink = 0; if (S.nextBlink - S.t > -0.2 && !S.wasDbl) { S.dbl = Math.random() < 0.25; } S.wasDbl = S.dbl; }
+    var bl = 0;
+    if (S.blink >= 0) {
+      S.blink += dt; var b = S.blink;
+      bl = b < 0.07 ? b / 0.07 : b < 0.11 ? 1 : b < 0.2 ? 1 - (b - 0.11) / 0.09 : 0;
+      if (b >= 0.2) { S.blink = -1; if (S.dbl) { S.dbl = false; S.nextBlink = S.t + 0.12; } else S.nextBlink = S.t + 1.8 + Math.random() * 3.5; }
+    }
+    set('uBlink', bl);
+    // head: picks a new place to look at, springs there with a little overshoot
+    if (S.t > S.nextLook) {
+      var r = cfg.headRange || [0.55, 0.25, 0.2];
+      if (mode === 'roar') S.target.set(0, -0.45, 0);
+      else if (Math.random() < 0.35) S.target.set(0, 0, 0);
+      else S.target.set((Math.random() * 2 - 1) * r[0], (Math.random() * 2 - 1) * r[1], (Math.random() * 2 - 1) * r[2]);
+      S.nextLook = S.t + 1.2 + Math.random() * 2.6;
+    }
+    if (S.happy > 0) { S.target.z = Math.sin(S.t * 9) * 0.25; }
+    tmp.copy(S.target).sub(S.head).multiplyScalar(70).addScaledVector(S.hv, -9);
+    S.hv.addScaledVector(tmp, dt); S.head.addScaledVector(S.hv, dt);
+    set('uHead', S.head);
+    // tail: lazy sway, quick wag when happy
+    var wag = S.happy > 0 ? 1 : 0;
+    S.tailPh += dt * (wag ? 11 : 2.2);
+    set('uTail', Math.sin(S.tailPh) * (wag ? 0.45 : S.tailAmp) + Math.sin(S.tailPh * 0.5 + 1) * 0.06);
+    set('uTailUp', (wag ? 0.12 : 0.04) * (0.5 + 0.5 * Math.sin(S.tailPh * 0.5)) * (cfg.tailUp || 0.3));
+    // paws: tap one paw now and then; tucked up while flying
+    var lh = (cfg.legs && cfg.legs.lift) || 0.1;
+    if (mode === 'fly') { set('uLegL', lh * 0.8); set('uLegR', lh * 0.8); set('uLegH', lh * 0.6); }
+    else {
+      if (S.paw < 0 && S.t > S.nextPaw) { S.paw = 0; S.pawSide = Math.random() < 0.5 ? 0 : 1; }
+      var pl = 0;
+      if (S.paw >= 0) { S.paw += dt; pl = Math.sin(Math.min(1, S.paw / 0.45) * Math.PI); if (S.paw >= 0.45) { S.paw = -1; S.nextPaw = S.t + (S.happy > 0 ? 0.1 : 2.5 + Math.random() * 4); S.pawSide = 1 - S.pawSide; } }
+      if (S.happy > 0 && S.paw < 0) { S.paw = 0; }
+      set('uLegL', S.pawSide === 0 ? pl * lh : 0); set('uLegR', S.pawSide === 1 ? pl * lh : 0); set('uLegH', 0);
+    }
+    // wings
+    var sp = 0, amp = 0, fold = 0;
+    if (mode === 'fly') { sp = 11; amp = 0.45; }
+    else if (mode === 'flutter') { sp = cfg.flutter || 14; amp = (cfg.wings && cfg.wings.amp) || 0.5; }
+    else if (mode === 'roar') { sp = 9; amp = 0.4; }
+    else if (mode === 'giant') { sp = 4.5; amp = 0.35; }
+    else {
+      if (S.stretch < 0 && S.t > S.nextStretch) S.stretch = 0;
+      if (S.stretch >= 0) { S.stretch += dt; var k = S.stretch / 1.6; sp = 7; amp = 0.35 * Math.sin(Math.min(1, k) * Math.PI); if (k >= 1) { S.stretch = -1; S.nextStretch = S.t + 5 + Math.random() * 6; } }
+      else { sp = 2.2; amp = 0.04; }
+    }
+    S.flapPh += dt * sp; set('uFlapT', S.flapPh); set('uAmp', amp); set('uFold', fold);
+    if (S.happy > 0) S.happy = Math.max(0, S.happy - dt);
+  }
+  return {
+    update: update, mouth: mouth, flapPhase: function () { return S.flapPh; },
+    happy: function (d) { S.happy = d || 1.5; S.nextBlink = S.t; },
+    look: function (yaw, pitch, roll, hold) { S.target.set(yaw, pitch, roll || 0); S.nextLook = S.t + (hold || 1.5); },
+    set: function (t, a) { set('uFlapT', t); if (a != null) set('uAmp', a); },
+    raw: set
+  };
+};
+
+window.CREATURES = {
+  boule: { wings: { start: 0.6, pivY: 0.55, amp: 0.5 }, eyes: { L: 0.385, R: 0.62, y: 0.586, rx: 0.065, ry: 0.09, z: 0.8, zf: 0.4 },
+    head: { x0: -0.1, x1: 1.1, neckY: 0.3, z: -0.2, piv: [0.5, 0.2, 0.5], withWings: true }, headRange: [0.35, 0.15, 0.18],
+    legs: { L: [0.3, 0.45], R: [0.55, 0.72], top: 0.1, z: 0.3, hind: [9, 9], lift: 0.05 }, flutter: 16, mouth: [0.5, 0.48, 1.0] },
+  petit_dragon: { wings: { start: 0.5, pivY: 0.55, amp: 0.5 }, eyes: { L: 0.385, R: 0.62, y: 0.6125, rx: 0.06, ry: 0.09, z: 0.8, zf: 0.4 },
+    head: { x0: -0.1, x1: 1.1, neckY: 0.3, z: -0.2, piv: [0.5, 0.2, 0.5], withWings: true }, headRange: [0.35, 0.15, 0.18],
+    legs: { L: [0.3, 0.45], R: [0.55, 0.7], top: 0.1, z: 0.5, hind: [9, 9], lift: 0.05 },
+    tail: { z: 0.31, top: 0.32, px: 0.5, len: 0.31 }, tailUp: 0.2, flutter: 12, mouth: [0.5, 0.5, 1.0] },
+  jeune_dragon: { wings: { start: 0.3, pivY: 0.62, yLow: 0.3, amp: 0.35 }, eyes: { L: 0.372, R: 0.483, y: 0.747, rx: 0.03, ry: 0.045, z: 0.95, zf: 0.15 },
+    head: { x0: 0.31, x1: 0.63, neckY: 0.6, z: 0.64, piv: [0.47, 0.6, 0.8] }, headRange: [0.5, 0.22, 0.2],
+    legs: { L: [0.23, 0.42], R: [0.5, 0.69], top: 0.28, z: 0.76, hind: [0.42, 0.62], lift: 0.09 },
+    tail: { z: 0.43, top: 0.48, px: 0.45, len: 0.43 }, tailUp: 0.35, mouth: [0.47, 0.67, 1.0] },
+  dragon_immense: { wings: { start: 0.3, pivY: 0.62, yLow: 0.3, amp: 0.35 }, eyes: { L: 0.431, R: 0.5, y: 0.756, rx: 0.02, ry: 0.032, z: 0.96, zf: 0.12 },
+    head: { x0: 0.38, x1: 0.62, neckY: 0.63, z: 0.76, piv: [0.5, 0.62, 0.82] }, headRange: [0.4, 0.18, 0.15],
+    legs: { L: [0.24, 0.46], R: [0.5, 0.68], top: 0.22, z: 0.77, hind: [0.39, 0.6], lift: 0.06 },
+    tail: { z: 0.39, top: 0.38, px: 0.5, len: 0.39 }, tailUp: 0.35, mouth: [0.495, 0.68, 1.0] }
+};
+
+// Cartoon rig for single-mesh humans (the brothers' heroes): arms swing up around the shoulders
+// (or the elbow for a weapon arm), the head looks around, the chest breathes. Found by bbox fractions.
+
+// Weight of a rigid prop (e.g. a trident + the hand holding it): grown along the mesh surface from a seed,
+// limited to a zone, then softened over a short distance so the wrist bends instead of tearing.
+function propWeights(g, bb, pc) {
+  var T = THREE, pa = g.attributes.position, n = pa.count, W = bb.max.x - bb.min.x, H = bb.max.y - bb.min.y;
+  var key = {}, wid = new Int32Array(n), wp = [], m = 0;
+  for (var i = 0; i < n; i++) { var k = Math.round(pa.getX(i) * 1e4) + '|' + Math.round(pa.getY(i) * 1e4) + '|' + Math.round(pa.getZ(i) * 1e4);
+    if (key[k] === undefined) { key[k] = m++; wp.push(pa.getX(i), pa.getY(i), pa.getZ(i)); } wid[i] = key[k]; }
+  var idx = g.index ? g.index.array : null, nt = idx ? idx.length : n, deg = new Int32Array(m + 1);
+  var tri = function (t) { return idx ? wid[idx[t]] : wid[t]; };
+  for (var t = 0; t < nt; t += 3) { var a = tri(t), b = tri(t + 1), c = tri(t + 2); deg[a] += 2; deg[b] += 2; deg[c] += 2; }
+  var off = new Int32Array(m + 1); for (var v = 0; v < m; v++) off[v + 1] = off[v] + deg[v];
+  var nb = new Int32Array(off[m]), fill = new Int32Array(m);
+  var put = function (x, y) { nb[off[x] + fill[x]++] = y; };
+  for (t = 0; t < nt; t += 3) { a = tri(t); b = tri(t + 1); c = tri(t + 2); put(a, b); put(a, c); put(b, a); put(b, c); put(c, a); put(c, b); }
+  var fx = function (v) { return (wp[v * 3] - bb.min.x) / W; }, fy = function (v) { return (wp[v * 3 + 1] - bb.min.y) / H; };
+  // 1. the prop itself
+  var reg = new Uint8Array(m), q = [];
+  for (v = 0; v < m; v++) if (fy(v) > pc.seedY && fx(v) < pc.seedX && fx(v) < pc.maxX) { reg[v] = 1; q.push(v); }
+  for (var qi = 0; qi < q.length; qi++) { var u = q[qi]; for (var e = off[u]; e < off[u + 1]; e++) { var w = nb[e]; if (!reg[w] && fx(w) < pc.maxX) { reg[w] = 1; q.push(w); } } }
+  // 2. soft fall-off into the forearm (geodesic distance, simple label-correcting search)
+  var dist = new Float32Array(m).fill(1e9), soft = H * (pc.soft || 0.08); q = [];
+  for (v = 0; v < m; v++) if (reg[v]) { dist[v] = 0; q.push(v); }
+  for (qi = 0; qi < q.length; qi++) { u = q[qi];
+    for (e = off[u]; e < off[u + 1]; e++) { w = nb[e]; if (fx(w) > pc.softX) continue;
+      var dx = wp[w * 3] - wp[u * 3], dy = wp[w * 3 + 1] - wp[u * 3 + 1], dz = wp[w * 3 + 2] - wp[u * 3 + 2], nd = dist[u] + Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (nd < dist[w] && nd < soft) { dist[w] = nd; q.push(w); } } }
+  var out = new Float32Array(n);
+  for (i = 0; i < n; i++) { var d = dist[wid[i]]; out[i] = d >= soft ? 0 : 1 - (d / soft) * (d / soft) * (3 - 2 * d / soft); }
+  g.setAttribute('aProp', new T.BufferAttribute(out, 1));
+}
+window.addHumanoid = function (root, cfg) {
+  var T = THREE, uniforms = [];
+  root.traverse(function (o) {
+    if (!o.isMesh) return;
+    var g = o.geometry; g.computeBoundingBox();
+    var bb = g.boundingBox, W = bb.max.x - bb.min.x, H = bb.max.y - bb.min.y, D = bb.max.z - bb.min.z;
+    var X = function (f) { return bb.min.x + W * f; }, Y = function (f) { return bb.min.y + H * f; }, Z = function (f) { return bb.min.z + D * f; };
+    var h = cfg.head, A = cfg.arms;
+    var v3 = function (p) { return new T.Vector3(X(p[0]), Y(p[1]), Z(p[2])); };
+    var u = {
+      uCx: { value: X(cfg.cx) }, uF: { value: W * 0.03 },
+      uHead: { value: new T.Vector3() }, uHeadX0: { value: X(h.x0) }, uHeadX1: { value: X(h.x1) }, uNeckY: { value: Y(h.neckY) }, uNeckF: { value: H * 0.03 }, uHeadZ: { value: Z(h.z) }, uPiv: { value: v3(h.piv) },
+      uArmL: { value: new T.Vector3() }, uArmR: { value: new T.Vector3() }, uLiftL: { value: 0 }, uLiftR: { value: 0 },
+      uShL: { value: v3(A.L.piv) }, uShR: { value: v3(A.R.piv) }, uThrL: { value: W * A.L.thr }, uThrR: { value: W * A.R.thr },
+      uFarL: { value: W * (A.L.far || 9) }, uFarR: { value: W * (A.R.far || 9) }, uTopL: { value: Y(A.L.top) }, uTopR: { value: Y(A.R.top) },
+      uArmLow: { value: Y(cfg.armLow) }, uArmZ: { value: Z(cfg.armZ) }, uYF: { value: H * 0.025 },
+      uHandL: { value: v3(A.L.hand) }, uHandR: { value: v3(A.R.hand) }, uRad: { value: H * (cfg.armRad || 0.06) }, uRadF: { value: H * 0.03 }, uFarZ: { value: Z(cfg.farZ || 0) }, uCapEnd: { value: cfg.capEnd || 1.2 },
+      uPropAng: { value: new T.Vector3() }, uPropLift: { value: 0 }, uPropPiv: { value: cfg.prop ? v3(cfg.prop.piv) : new T.Vector3() },
+      uBreath: { value: 0 }, uChest0: { value: Y(cfg.chest[0]) }, uChest1: { value: Y(cfg.chest[1]) }, uCz: { value: Z(0.5) }
+    };
+    var vec = { uHead: 1, uPiv: 1, uArmL: 1, uArmR: 1, uShL: 1, uShR: 1, uHandL: 1, uHandR: 1, uPropAng: 1, uPropPiv: 1 };
+    if (cfg.prop) propWeights(g, bb, cfg.prop);
+    var decl = Object.keys(u).map(function (k) { return 'uniform ' + (vec[k] ? 'vec3 ' : 'float ') + k + ';'; }).join('\n') + (cfg.prop ? '\nattribute float aProp;' : '');
+    var mat = o.material.clone();
+    mat.onBeforeCompile = function (sh) {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = decl + '\nfloat band(float x, float a, float b, float f) { return smoothstep(a - f, a, x) * (1.0 - smoothstep(b, b + f, x)); }\n' +
+        'mat3 rotXYZ(vec3 r) { float cy = cos(r.x), sy = sin(r.x), cp = cos(r.y), sp = sin(r.y), cr = cos(r.z), sr = sin(r.z);\n' +
+        '  mat3 Ry = mat3(cy, 0.0, -sy, 0.0, 1.0, 0.0, sy, 0.0, cy); mat3 Rx = mat3(1.0, 0.0, 0.0, 0.0, cp, sp, 0.0, -sp, cp); mat3 Rz = mat3(cr, sr, 0.0, -sr, cr, 0.0, 0.0, 0.0, 1.0); return Ry * Rx * Rz; }\n' +
+        sh.vertexShader.replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          'vec3 P = transformed;',
+          // breathing: the chest swells a little
+          'float wc = band(P.y, uChest0, uChest1, uYF * 2.0);',
+          'P.x = uCx + (P.x - uCx) * (1.0 + uBreath * 0.025 * wc); P.z = uCz + (P.z - uCz) * (1.0 + uBreath * 0.04 * wc);',
+          (cfg.prop ? 'P = uPropPiv + rotXYZ(uPropAng * aProp) * (P - uPropPiv); P.y += uPropLift * aProp;' : ''),
+          // arms (+ what they hold)
+          'float dx = P.x - uCx; float ad = abs(dx); bool lft = dx < 0.0;',
+          'float thr = lft ? uThrL : uThrR; float far = lft ? uFarL : uFarR; float top = lft ? uTopL : uTopR;',
+          'vec3 sp = lft ? uShL : uShR; vec3 hd = lft ? uHandL : uHandR;',
+          'vec3 pa = P - sp, ba = hd - sp; float hh = clamp(dot(pa, ba) / dot(ba, ba), -0.05, uCapEnd); float dcap = length(pa - ba * hh);',
+          'float wa = (1.0 - smoothstep(uRad, uRad + uRadF, dcap)) * smoothstep(thr, thr + uF * 2.0, ad) * (1.0 - smoothstep(top, top + uYF, P.y)) * smoothstep(uArmLow - uYF, uArmLow, P.y);',
+          'float wf = smoothstep(far, far + uF, ad) * smoothstep(uFarZ - uF, uFarZ, P.z);',
+          'float w = max(wa, wf);',
+          'vec3 ang = lft ? uArmL : uArmR; float lift = lft ? uLiftL : uLiftR;',
+          'P = sp + rotXYZ(ang * w) * (P - sp); P.y += lift * w;',
+          // head
+          'float wh = smoothstep(uNeckY, uNeckY + uNeckF, P.y) * smoothstep(uHeadZ - uNeckF, uHeadZ, P.z) * band(P.x, uHeadX0, uHeadX1, uNeckF);',
+          'P = uPiv + rotXYZ(uHead * wh) * (P - uPiv);',
+          'transformed = P;'
+        ].join('\n'));
+    };
+    mat.customProgramCacheKey = function () { return 'humanoid' + (cfg.prop ? 'P' : ''); };
+    o.material = mat; uniforms.push(u);
+    root.userData.H = H;
+  });
+  var set = function (k, v) { uniforms.forEach(function (u) { if (u[k].value && u[k].value.isVector3) u[k].value.copy(v); else u[k].value = v; }); };
+  // springs for the head and both arms: [yaw, pitch, roll]; arm "raise" is roll (+ = up), applied mirrored per side
+  function spring(k, d) { return { x: new T.Vector3(), v: new T.Vector3(), t: new T.Vector3(), k: k, d: d }; }
+  function step(s, dt) { var a = s.t.clone().sub(s.x).multiplyScalar(s.k).addScaledVector(s.v, -s.d); s.v.addScaledVector(a, dt); s.x.addScaledVector(s.v, dt); }
+  var S = { t: 0, head: spring(60, 9), L: spring(55, 8), R: spring(55, 8), prop: spring(70, 9), propLift: 0, nextLook: 0.6, pose: 'idle', poseT: 0, poseDur: 0, side: cfg.waveSide || 'R', liftL: 0, liftR: 0 };
+  var rest = cfg.rest || 0;
+  function armTarget(s, raise, fwd, twist) { s.t.set(fwd || 0, twist || 0, raise); }
+  function update(dt) {
+    S.t += dt; S.poseT += dt; var t = S.t, p = S.pose, k = S.poseT;
+    if (p !== 'idle' && S.poseDur && k > S.poseDur) { S.pose = p = 'idle'; }
+    // head
+    if (t > S.nextLook && p === 'idle') {
+      var r = cfg.headRange || [0.45, 0.15, 0.1];
+      if (Math.random() < 0.4) S.head.t.set(0, 0, 0); else S.head.t.set((Math.random() * 2 - 1) * r[0], (Math.random() * 2 - 1) * r[1], (Math.random() * 2 - 1) * r[2]);
+      S.nextLook = t + 1.4 + Math.random() * 2.8;
+    }
+    var L = S.L, R = S.R, liftL = 0, liftR = 0, sw = Math.sin(t * 1.6) * 0.04;
+    armTarget(L, sw + rest, 0, 0); armTarget(R, -sw + rest, 0, 0);
+    var wv = S.side === 'L' ? L : R, other = cfg.talkSide ? (cfg.talkSide === 'L' ? L : R) : (S.side === 'L' ? R : L);
+    if (p === 'wave') { armTarget(wv, 1.95 + Math.sin(k * 11) * 0.28, 0.15, 0); S.head.t.set(S.side === 'L' ? -0.12 : 0.12, 0.05, Math.sin(k * 5) * 0.08); }
+    else if (p === 'victory') { var up = 2.15 + Math.sin(k * 9) * 0.12; armTarget(L, up, 0.1, 0); armTarget(R, up, 0.1, 0); S.head.t.set(0, -0.18, 0); liftL = liftR = cfg.liftUp || 0; }
+    else if (p === 'point') { armTarget(wv, 0.75, 1.1, 0); S.head.t.set(S.side === 'L' ? -0.25 : 0.25, 0.05, 0); }
+    else if (p === 'talk') { armTarget(other, 0.45 + Math.sin(k * 3.2) * 0.25, 0.5, 0); S.head.t.set(Math.sin(k * 1.3) * 0.12, Math.sin(k * 7) * 0.07, Math.sin(k * 2.1) * 0.06); }
+    else if (p === 'bow') { S.head.t.set(0, 0.35, 0); armTarget(wv, 0.5, 0.7, 0); }
+    else if (p === 'look') { /* head target set by caller */ }
+    // a held prop (Val's trident) does the big gestures, so the robe never stretches
+    if (cfg.prop) {
+      var pt = S.prop.t, pl = 0; pt.set(0, 0, Math.sin(t * 1.1) * 0.015);
+      if (p === 'wave') { pt.set(0, 0.05, 0.14 + Math.sin(k * 7) * 0.1); pl = 0.035; }
+      else if (p === 'victory') { pt.set(0, 0.04, 0.04 + Math.sin(k * 16) * 0.025); pl = 0.085; }
+      else if (p === 'point') { pt.set(0, 0.32, 0.08); pl = 0.02; }
+      else if (p === 'talk') { pt.set(0, Math.sin(k * 1.7) * 0.06, Math.sin(k * 2.3) * 0.06); }
+      else if (p === 'bow') { pt.set(0, 0.12, 0); }
+      S.propLift += (pl - S.propLift) * Math.min(1, dt * 7);
+      step(S.prop, dt);
+    }
+    ['L', 'R'].forEach(function (sd) { var a = cfg.arms[sd], sp2 = sd === 'L' ? L : R; if (a.maxRaise != null) { sp2.t.z = Math.min(sp2.t.z, a.maxRaise); sp2.t.x = Math.max(-a.maxRaise, Math.min(a.maxRaise, sp2.t.x)); } });
+    step(S.head, dt); step(L, dt); step(R, dt);
+    S.liftL += (liftL - S.liftL) * Math.min(1, dt * 6); S.liftR += (liftR - S.liftR) * Math.min(1, dt * 6);
+    // mirror: on the -x side a raise is a negative roll, a forward swing is a positive yaw
+    set('uArmL', new T.Vector3(L.x.x, 0, -L.x.z)); set('uArmR', new T.Vector3(-R.x.x, 0, R.x.z));
+    set('uLiftL', S.liftL * (root.userData.H || 1)); set('uLiftR', S.liftR * (root.userData.H || 1));
+    set('uHead', S.head.x); set('uBreath', Math.sin(t * 2.1));
+    if (cfg.prop) { set('uPropAng', S.prop.x); set('uPropLift', S.propLift * (root.userData.H || 1)); }
+  }
+  return {
+    update: update,
+    pose: function (name, dur, side) { S.pose = name; S.poseT = 0; S.poseDur = dur || 0; if (side) S.side = side; },
+    look: function (yaw, pitch, roll, hold) { S.head.t.set(yaw, pitch, roll || 0); S.nextLook = S.t + (hold || 1.5); },
+    current: function () { return S.pose; }
+  };
+};
+
+window.HUMANOIDS = {
+  thib: { cx: 0.5, head: { x0: 0.36, x1: 0.64, neckY: 0.845, z: 0.45, piv: [0.5, 0.83, 0.6] }, headRange: [0.45, 0.12, 0.08],
+    arms: { L: { thr: 0.22, top: 0.83, piv: [0.28, 0.775, 0.55], hand: [0.035, 0.51, 0.55] }, R: { thr: 0.22, top: 0.83, piv: [0.72, 0.775, 0.55], hand: [0.965, 0.51, 0.55] } }, armRad: 0.055,
+    armLow: 0.46, armZ: 0.43, chest: [0.55, 0.8], waveSide: 'R' },
+  val: { cx: 0.58, head: { x0: 0.47, x1: 0.7, neckY: 0.8, z: 0.45, piv: [0.58, 0.79, 0.6] }, headRange: [0.4, 0.1, 0.06],
+    arms: { L: { thr: 9, far: 9, top: 0, piv: [0.3, 0.68, 0.6], hand: [0.15, 0.61, 0.85] }, R: { thr: 0.26, top: 0.82, piv: [0.82, 0.75, 0.55], hand: [0.93, 0.41, 0.566], maxRaise: 0.32 } }, armRad: 0.038, capEnd: 1.2,
+    prop: { seedY: 0.93, seedX: 0.25, maxX: 0.22, softX: 0.34, soft: 0.07, piv: [0.17, 0.61, 0.9] },
+    armLow: 0.36, armZ: 0.38, chest: [0.52, 0.76], waveSide: 'R', talkSide: 'R' }
+};
+window.CREATURES.loup = { eyes: { L: 0.55, R: 0.665, y: 0.817, rx: 0.03, ry: 0.022, z: 0.92, zf: 0.1 },
+  head: { x0: 0.44, x1: 0.8, neckY: 0.62, z: 0.74, piv: [0.62, 0.62, 0.8] }, headRange: [0.4, 0.18, 0.12],
+  legs: { L: [0.33, 0.51], R: [0.56, 0.75], top: 0.3, z: 0.68, hind: [0.15, 0.43], lift: 0.06 },
+  tail: { z: 0.2, top: 0.86, px: 0.6, len: 0.2 }, tailUp: 0.25 };
+window.CREATURES.lion = { eyes: { L: 0.468, R: 0.614, y: 0.79, rx: 0.035, ry: 0.02, z: 0.93, zf: 0.1 },
+  head: { x0: 0.25, x1: 0.84, neckY: 0.55, z: 0.63, piv: [0.54, 0.55, 0.78] }, headRange: [0.35, 0.15, 0.1],
+  legs: { L: [0.12, 0.45], R: [0.55, 0.9], top: 0.22, z: 0.68, hind: [0.27, 0.48], lift: 0.06 },
+  tail: { z: 0.27, top: 0.68, px: 0.5, len: 0.27 }, tailUp: 0.3 };
+
+</script>
 <script>window.HeroScene = function (stage, opts) {
   opts = opts || {};
   var T = window.THREE, V = T.Vector3;
@@ -6354,10 +6686,10 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   scene.fog = new T.Fog(0x231C66, 7, 16);
 
   var camera = new T.PerspectiveCamera(32, 1, 0.1, 100);
-  var camTarget = new V(0, opts.targetY || 0.98, 0);
+  var camTarget = new V(0, opts.targetY || 0.74, 0);
 
   // Lights
-  scene.add(new T.HemisphereLight(0xC9C2FF, 0x2B2470, 1.1));
+  var hemi = new T.HemisphereLight(0xC9C2FF, 0x2B2470, 1.1); scene.add(hemi);
   var key = new T.DirectionalLight(0xFFE7C6, 2.6);
   key.position.set(2.2, 3.4, 2.6); key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
@@ -6553,7 +6885,10 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     var w2 = mesh(new T.SphereGeometry(0.2, 32, 16), wingMat); w2.scale.set(1, 0.5, 0.06); w2.position.set(0.2 * s, -0.12, -0.02); w2.rotation.z = -0.4 * s; piv.add(w2);
     wings.push({ p: piv, s: s });
   });
-  var aura = new T.Mesh(new T.SphereGeometry(1, 32, 24), new T.MeshBasicMaterial({ color: 0xFFD36B, transparent: true, opacity: 0.08, side: T.BackSide, depthWrite: false }));
+  var auraMat = new T.ShaderMaterial({ uniforms: { c1: { value: new T.Color(0xFFD36B) }, c2: { value: new T.Color(0xB27CFF) }, k: { value: 1 }, t: { value: 0 } }, transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.FrontSide,
+    vertexShader: 'varying vec3 vN; varying vec3 vV; varying float vY; void main(){ vec4 w = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-w.xyz); vY = position.y; gl_Position = projectionMatrix * w; }',
+    fragmentShader: 'uniform vec3 c1, c2; uniform float k, t; varying vec3 vN; varying vec3 vV; varying float vY;\nvoid main(){ float f = pow(1.0 - abs(dot(vN, vV)), 2.4); float w = 0.5 + 0.5 * sin(vY * 6.0 - t * 2.5); vec3 c = mix(c2, c1, w); gl_FragColor = vec4(c * f * 0.55 * k, 1.0); }' });
+  var aura = new T.Mesh(new T.SphereGeometry(1, 40, 28), auraMat);
   aura.scale.set(0.75, 1.15, 0.75); aura.position.y = 1.0; hero.add(aura);
   var level = 1, realOn = false, lightsTuned = false;
   function setLevel(n) {
@@ -6576,8 +6911,15 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     boule: { h: 0.4, x: 0.6, y: 1.2, z: 0.18, fly: true },
     petit_dragon: { h: 0.5, x: 0.64, y: 1.15, z: 0.18, fly: true },
     jeune_dragon: { h: 0.82, x: 0.66, y: 0, z: 0.22, fly: false },
-    dragon_immense: { h: 2.1, x: 0, y: 0, z: -1.7, fly: false },
+    dragon_immense: { h: 2.6, x: 0.95, y: 0.4, z: -1.5, fly: false },
+    thib: { h: 2.3 }, val: { h: 2.2 }, thib_duo: { h: 2.75 }, val_duo: { h: 2.65 }, thib_anim: { h: 2.3 }, val_anim: { h: 2.2 }, loup_anim: { h: 1.5 }, lion_anim: { h: 1.45 }, loup_walk: { h: 1.5 }, lion_walk: { h: 1.45 }, loup: { h: 1.5 }, lion: { h: 1.45 },
     heroine_v1: { h: 1.82 }, heroine_v2: { h: 1.82 }, heroine_v3: { h: 1.82 }, heroine_v4: { h: 1.82 }, heroine_v5: { h: 1.85 }
+  };
+  var FLAP = {
+    boule: { start: 0.6, pivY: 0.55, amp: 0.5 },
+    petit_dragon: { start: 0.5, pivY: 0.55, amp: 0.5 },
+    jeune_dragon: { start: 0.3, pivY: 0.62, yLow: 0.3, amp: 0.35 },
+    dragon_immense: { start: 0.3, pivY: 0.62, yLow: 0.3, amp: 0.35 }
   };
   var BASES = [opts.modelBase || 'models/', 'https://thib0703.github.io/mon-heroine/models/'];
   var loader = window.GLTFLoader ? new window.GLTFLoader() : null;
@@ -6596,11 +6938,24 @@ window.GLTFLoader=window.__GL.GLTFLoader;
         var s = f.h / sz.y;
         m.position.set(-c.x * s, -b.min.y * s, -c.z * s); m.scale.setScalar(s);
         var holder = new T.Group(); holder.add(m); holder.userData.form = name; holder.userData.clips = g.animations || [];
+        if (window.CREATURES && window.CREATURES[name] && window.addCreature) {
+          var rig = holder.userData.rig = window.addCreature(m, window.CREATURES[name]);
+          if (rig.mouth) holder.userData.mouth = rig.mouth.clone().multiplyScalar(s).add(m.position);
+        }
+        if (window.HUMANOIDS && window.HUMANOIDS[name] && window.addHumanoid) holder.userData.hrig = window.addHumanoid(m, window.HUMANOIDS[name]);
         cache[name] = holder;
         var l = waiting[name]; delete waiting[name]; l.forEach(function (fn) { fn(holder); });
       }, undefined, function () { tryBase(i + 1); });
     };
     tryBase(0);
+  }
+  var missing = {};
+  function tryForm(name, ok) { // like loadForm, but tells when the file does not exist
+    if (missing[name]) return ok(null);
+    if (cache[name]) return ok(cache[name]);
+    var done = false;
+    loadForm(name, function (h) { if (!done) { done = true; ok(h); } });
+    var n = 0, iv = setInterval(function () { n++; if (done) return clearInterval(iv); if ((!waiting[name] && !cache[name]) || n > 12) { clearInterval(iv); done = true; missing[name] = 1; ok(null); } }, 700);
   }
   var hatched = !!opts.pet, curForm = null, cur = null;
   var swap = { t: -1, from: null, hatch: false };
@@ -6630,21 +6985,29 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   petShield.rotation.x = Math.PI / 2; petShield.scale.set(1, 0.35, 1); pet.add(petShield);
   var shieldT = -1, nextShield = 4;
   // Violet fire (stages 4-5): small glowing puffs
-  var fireMat = new T.MeshBasicMaterial({ color: 0xB45CFF, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false });
+  var fireMat = new T.MeshBasicMaterial({ color: 0x9B30FF, transparent: true, opacity: 0.75, blending: T.NormalBlending, depthWrite: false });
   var puffs = [];
   for (var q = 0; q < 14; q++) { var pm = new T.Mesh(new T.SphereGeometry(0.035, 10, 8), fireMat.clone()); pm.visible = false; pet.add(pm); puffs.push({ m: pm, t: -1, v: new V() }); }
   var fireNext = 5, fireT = -1;
-  function breathe() { fireT = 0; }
-  // Giant dragon (stage 5 special)
-  var giantT = -1, giant = null;
+  function breathe() { fireT = 0; if (cur && cur.userData.rig) cur.userData.rig.look(0, -0.15, 0, 0.35); setTimeout(function () { if (cur && cur.userData.rig) cur.userData.rig.look(0, 0.15, 0, 1.2); }, 350); }
+  // Giant dragon (stage 5 special): the young dragon swells up into the immense one, then shrinks back
+  var flashT = 0, camZoom = 1, camShake = 0;
+  var giantT = -1, giant = null, flyT = -1, nextFly = 25, popT = -1, flapPh = 0, gFlapPh = 0;
+  var flashMat = new T.MeshBasicMaterial({ color: 0xD9B8FF, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false });
+  var flash = new T.Mesh(new T.SphereGeometry(1, 32, 16), flashMat); flash.visible = false; petRoot.add(flash);
+  var petGlow = new T.PointLight(0xB45CFF, 0, 3, 2); petRoot.add(petGlow);
   function goGiant() {
-    if (level < 5 || giantT >= 0) return;
-    loadForm('dragon_immense', function (h) { giant = h; if (!h.parent) petRoot.add(h); giantT = 0; });
+    if (level < 5 || giantT >= 0 || !cur) return;
+    flyT = -1;
+    loadForm('dragon_immense', function (h) { giant = h; if (!h.parent) petRoot.add(h); h.visible = false; giantT = 0; });
   }
+  function goFly() { if (level >= 5 && curForm === 'jeune_dragon' && flyT < 0 && giantT < 0) flyT = 0; }
   function petTap() {
     if (curForm === 'oeuf') { swap.wob = 0.8; return; }
+    if (cur && cur.userData.rig) cur.userData.rig.happy(1.6);
     if (level === 3) shieldT = 0;
-    if (level >= 4) breathe();
+    if (level === 4) breathe();
+    if (level >= 5) { if (flyT < 0 && giantT < 0) goFly(); else breathe(); }
   }
   refreshPet(false);
   // Real heroine: one 3D model per level (models/heroine_v1..v5.glb); the drawn one stays as a fallback
@@ -6683,18 +7046,18 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     });
   }
   refreshHero();
-  var petLastT = 0;
+  var petLastT = 0, petFace = -0.4;
   function updatePet(time, _dt, jy) {
-    var dt = petLastT ? Math.min(0.05, Math.max(0, time - petLastT)) : 0.016; petLastT = time;
+    var dt = (petLastT ? Math.min(0.05, Math.max(0, time - petLastT)) : 0.016) * timeScale; petLastT = time;
     petRoot.rotation.y = rotY;
     var f = FORMS[curForm] || FORMS.oeuf, ss = stageScale();
     if (f.fly) {
       pet.position.set(f.x + Math.sin(time * 0.8) * 0.04, f.y + Math.sin(time * 2.4) * 0.06 + jy * 0.6, f.z + Math.cos(time * 0.8) * 0.05);
-      pet.rotation.y = -0.45 + Math.sin(time * 0.6) * 0.2;
+      petFace += ((fireT >= 0 ? 0.75 : -0.45 + Math.sin(time * 0.6) * 0.2) - petFace) * Math.min(1, dt * 5); pet.rotation.y = petFace;
       pet.rotation.z = Math.sin(time * 1.3) * 0.06;
     } else {
       pet.position.set(f.x, f.y + jy * 0.4, f.z);
-      pet.rotation.y = -0.35 + Math.sin(time * 0.4) * 0.12;
+      petFace += ((fireT >= 0 ? 0.65 : -0.35 + Math.sin(time * 0.4) * 0.12) - petFace) * Math.min(1, dt * 5); pet.rotation.y = petFace;
       pet.rotation.z = curForm === 'oeuf' ? Math.sin(time * 2.2) * 0.04 * (1 + (swap.wob || 0) * 4) : 0;
       if (swap.wob) swap.wob = Math.max(0, swap.wob - dt);
     }
@@ -6715,7 +7078,11 @@ window.GLTFLoader=window.__GL.GLTFLoader;
             if (p2 >= 1) swap.t = -1;
           }
         } else { p = Math.min(1, swap.t / 0.5); cur.scale.setScalar(base * (1 - Math.pow(1 - p, 3)) + 0.001); if (p >= 1) swap.t = -1; }
-      } else cur.scale.setScalar(base);
+      } else {
+        // squash & stretch: small flyers bounce on the air, dragons breathe
+        var sq2 = (curForm === 'boule' || curForm === 'petit_dragon') ? Math.sin(time * 2.4 + 1.2) * 0.05 : (curForm === 'jeune_dragon' ? Math.sin(time * 1.6) * 0.015 : 0);
+        cur.scale.set(ss * (1 - sq2 * 0.6), ss * (1 + sq2), ss * (1 - sq2 * 0.6));
+      }
     }
     // shield pulses at stage 3
     if (level === 3 && hatched && time > nextShield && shieldT < 0) { shieldT = 0; nextShield = time + 7 + Math.random() * 4; }
@@ -6728,36 +7095,81 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     if (level >= 4 && hatched && time > fireNext && fireT < 0) { fireT = 0; fireNext = time + 6 + Math.random() * 5; }
     if (fireT >= 0) {
       fireT += dt;
-      if (fireT < 0.9) puffs.forEach(function (u) {
+      if (fireT > 0.35 && fireT < 1.35) fireFrom(cur, curForm === 'jeune_dragon' ? 1.3 : 0.8, dt);
+      if (false) puffs.forEach(function (u) {
         if (u.t < 0 && Math.random() < 0.25) {
           var hh = (FORMS[curForm] || FORMS.boule).h * ss;
-          u.t = 0; u.m.visible = true; u.m.position.set(0, hh * 0.62, hh * 0.32);
-          u.v.set((Math.random() - 0.5) * 0.25, 0.08 + Math.random() * 0.1, 0.55 + Math.random() * 0.3);
+          u.t = 0; u.m.visible = true; if (cur && cur.userData.mouth) u.m.position.copy(cur.userData.mouth).multiplyScalar(cur.scale.x); else u.m.position.set(0, hh * 0.62, hh * 0.32);
+          u.v.set(0.25 + (Math.random() - 0.5) * 0.2, 0.05 + Math.random() * 0.08, 0.6 + Math.random() * 0.3);
         }
       });
-      else fireT = -1;
+      if (fireT >= 1.5) fireT = -1;
     }
     puffs.forEach(function (u) {
       if (u.t < 0) return;
       u.t += dt; var k = u.t / 0.7;
       if (k >= 1) { u.t = -1; u.m.visible = false; return; }
       u.m.position.addScaledVector(u.v, dt);
-      u.m.scale.setScalar(0.6 + k * 2.2); u.m.material.opacity = 0.9 * (1 - k);
-      u.m.material.color.setHSL(0.76 - k * 0.04, 1, 0.65 - k * 0.2);
+      var gk = k < 0.3 ? k / 0.3 : 1 - (k - 0.3) / 0.7; u.m.scale.set(0.5 + gk * 1.6, 0.4 + gk * 1.1, 0.5 + gk * 1.6); u.m.material.opacity = 0.75 * gk;
+      u.m.material.color.setHSL(0.79 - k * 0.05, 1, 0.82 - k * 0.42);
     });
-    // giant dragon: rises behind her, stays a few seconds, then goes back
-    if (giant) {
-      if (giantT >= 0) {
-        giantT += dt; var gp;
-        if (giantT < 1) gp = 1 - Math.pow(1 - giantT, 3);
-        else if (giantT < 6) gp = 1 + Math.sin((giantT - 1) * 2) * 0.01;
-        else if (giantT < 7) gp = 1 - (giantT - 6);
-        else { gp = 0; giantT = -1; }
-        giant.visible = gp > 0.01; giant.scale.setScalar(Math.max(0.001, gp));
-        giant.position.set(FORMS.dragon_immense.x, 0, FORMS.dragon_immense.z);
-        pet.visible = !(giantT > 0.3 && giantT < 6.5);
-      } else { giant.visible = false; pet.visible = true; }
+    // creature rig: blinks, head, tail, paws, wings
+    if (cur && cur.userData.rig) {
+      var mode = flyT >= 0 ? 'fly' : (curForm === 'boule' || curForm === 'petit_dragon') ? 'flutter' : 'idle';
+      if (giantT >= 0) mode = 'still';
+      cur.userData.rig.update(dt, mode);
     }
+    // the young dragon takes off, circles around her twice and lands
+    if (level >= 5 && hatched && giantT < 0 && flyT < 0 && time > nextFly) { nextFly = time + 22 + Math.random() * 12; goFly(); }
+    if (flyT >= 0 && cur) {
+      flyT += dt;
+      var rx = f.x, rz = f.z, a0 = Math.atan2(rz, rx), R = 0.95, H = 1.25, ft = flyT, px, py, pz, ang;
+      var orbit = function (u) { var aa = a0 + u * Math.PI * 4; return [Math.cos(aa) * R, H + Math.sin(u * Math.PI * 6) * 0.08, Math.sin(aa) * R, aa]; };
+      var sq = 1, st = 1;
+      if (ft < 0.35) { var c0 = ft / 0.35; px = rx; py = 0; pz = rz; sq = 1 - 0.18 * Math.sin(c0 * Math.PI / 2); st = 1 + 0.1 * Math.sin(c0 * Math.PI / 2); pet.rotation.y = -0.35; }
+      else if (ft < 1.0) { var e1 = (ft - 0.35) / 0.65, k1 = 1 - Math.pow(1 - e1, 3), o1 = orbit(0); px = rx + (o1[0] - rx) * k1; py = o1[1] * k1; pz = rz + (o1[2] - rz) * k1; sq = 1.12; st = 0.92; ang = o1[3]; pet.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang)); }
+      else if (ft < 5.0) { var o2 = orbit((ft - 1) / 4); px = o2[0]; py = o2[1]; pz = o2[2]; ang = o2[3]; pet.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang)); pet.rotation.z = 0.3; }
+      else if (ft < 5.8) { var e3 = (ft - 5) / 0.8, k3 = e3 * e3 * (3 - 2 * e3), o3 = orbit(1); px = o3[0] + (rx - o3[0]) * k3; py = o3[1] * (1 - k3); pz = o3[2] + (rz - o3[2]) * k3; pet.rotation.y = -0.35 * k3 + Math.atan2(-Math.sin(o3[3]), Math.cos(o3[3])) * (1 - k3); pet.rotation.z = 0.3 * (1 - k3); }
+      else if (ft < 6.3) { var e4 = (ft - 5.8) / 0.5; px = rx; py = 0; pz = rz; sq = 1 - 0.22 * Math.sin(e4 * Math.PI) ; st = 1 + 0.15 * Math.sin(e4 * Math.PI); pet.rotation.y = -0.35; pet.rotation.z = 0; }
+      else { flyT = -1; px = rx; py = 0; pz = rz; pet.rotation.z = 0; }
+      pet.position.set(px, py, pz);
+      cur.scale.set(ss * st, ss * sq, ss * st);
+    }
+    // giant transformation
+    var zoomTarget = 1;
+    if (giant && giantT >= 0) {
+      giantT += dt; var gt = giantT, s0 = (FORMS.jeune_dragon.h * ss) / FORMS.dragon_immense.h, gp = 0, gx = f.x, gz = f.z;
+      var easeBack = function (u) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); };
+      if (gt < 0.7) { // anticipation: crouch, tremble, glow
+        var a7 = gt / 0.7; pet.visible = true; giant.visible = false;
+        if (cur) cur.scale.set(ss * (1 + 0.1 * a7), ss * (1 - 0.15 * a7), ss * (1 + 0.1 * a7));
+        pet.position.x += (Math.random() - 0.5) * 0.03 * a7; petGlow.intensity = 6 * a7; petGlow.position.set(f.x, 0.5, f.z);
+      } else if (gt < 1.9) { // flash and grow
+        var u = (gt - 0.7) / 1.2, um = Math.min(1, u / 0.4), km = um * um * (3 - 2 * um), kb = easeBack(Math.max(0, Math.min(1, (u - 0.25) / 0.75)));
+        if (pet.visible) { pet.visible = false; camShake = 0.12; flash.visible = true; flashT = 0; flash.position.set(f.x, 0.45, f.z); }
+        gp = s0 + (1 - s0) * kb; gx = f.x + (FORMS.dragon_immense.x - f.x) * km; gz = f.z + (FORMS.dragon_immense.z - f.z) * km;
+        zoomTarget = 1 + 0.68 * km; petGlow.intensity = 6 * (1 - u);
+      } else if (gt < 5.6) { // stands tall, roars, flaps
+        gp = 1 + Math.sin((gt - 1.9) * 2.2) * 0.012; gx = FORMS.dragon_immense.x; gz = FORMS.dragon_immense.z; zoomTarget = 1.68;
+        if (gt - dt < 2.3 && gt >= 2.3) { camShake = 0.1; }
+        if (gt - dt < 2.0 && gt >= 2.0 && giant.userData.rig) giant.userData.rig.look(0, -0.4, 0, 1.2);
+      } else if (gt < 6.6) { // shrinks back
+        var u2 = (gt - 5.6) / 1.0, us = Math.min(1, u2 / 0.7), k2 = us * us * (3 - 2 * us), um2 = Math.max(0, (u2 - 0.55) / 0.45), km2 = um2 * um2 * (3 - 2 * um2);
+        gp = 1 - (1 - s0) * k2; gx = FORMS.dragon_immense.x + (f.x - FORMS.dragon_immense.x) * km2; gz = FORMS.dragon_immense.z + (f.z - FORMS.dragon_immense.z) * km2; zoomTarget = 1 + 0.68 * (1 - k2);
+      } else { giantT = -1; giant.visible = false; pet.visible = true; popT = 0; flash.visible = true; flashT = 0; flash.position.set(f.x, 0.4, f.z); petGlow.intensity = 0; }
+      if (giantT >= 0 && gp > 0) { var gl = Math.max(0, Math.min(1, (gp - s0) / (1 - s0))); giant.visible = true; giant.scale.setScalar(gp); giant.position.set(gx, FORMS.dragon_immense.y * gl + Math.sin(gt * 2.2) * 0.06 * gl, gz); giant.rotation.y = -0.35 * gl + Math.sin(gt * 0.7) * 0.06 * gl;
+        if (giant.userData.rig) giant.userData.rig.update(dt, gt > 2.1 && gt < 3.3 ? 'roar' : 'giant');
+        if (gt > 2.4 && gt < 3.4) fireFrom(giant, 2.4, dt); }
+    }
+    if (flash.visible) {
+      flashT += dt; var fp = Math.min(1, flashT / 0.6);
+      flash.scale.setScalar(0.2 + fp * 1.6); flashMat.opacity = 0.9 * (1 - fp);
+      if (fp >= 1) { flash.visible = false; }
+    }
+    if (popT >= 0 && cur) { popT += dt; var pp = Math.min(1, popT / 0.5); var ov = 1 + Math.sin(pp * Math.PI) * 0.25; cur.scale.set(ss * ov * pp + 0.001, ss * (2 - ov) * pp + 0.001, ss * ov * pp + 0.001); if (pp >= 1) popT = -1; }
+    if (M_.cam > 0.01) zoomTarget = Math.max(zoomTarget, 1 + 0.5 * M_.cam);
+    if (zoomOverride != null) zoomTarget = zoomOverride;
+    camZoom += (zoomTarget - camZoom) * Math.min(1, Math.max(dt, 0.016) * 3);
   }
 
   // Platform
@@ -6787,13 +7199,505 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     scene.add(o); sparks.push({ m: o, a: q / 9 * Math.PI * 2, h: 0.3 + Math.random() * 1.6, r: 0.62 + Math.random() * 0.3, sp: 0.3 + Math.random() * 0.4 });
   }
 
+  // ================= Cartoon effects: particles, powers, transformation =================
+  var glowCanvas = document.createElement('canvas'); glowCanvas.width = glowCanvas.height = 64;
+  (function () { var g = glowCanvas.getContext('2d'), rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.25, 'rgba(255,255,255,0.85)'); rg.addColorStop(0.6, 'rgba(255,255,255,0.25)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, 64, 64); })();
+  var glowTex = new T.CanvasTexture(glowCanvas);
+  var PG = new T.Group(); scene.add(PG);
+  var parts = [];
+  for (var pi = 0; pi < 260; pi++) {
+    var spm = new T.Sprite(new T.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
+    spm.visible = false; PG.add(spm); parts.push({ s: spm, t: -1 });
+  }
+  var _c0 = new T.Color(), _c1 = new T.Color(), _c2 = new T.Color();
+  // spawn one glowing particle: position, velocity, life, sizes, 2-3 colours, gravity, drag
+  function emit(o) {
+    var p = null;
+    for (var i = 0; i < parts.length; i++) if (parts[i].t < 0) { p = parts[i]; break; }
+    if (!p) return;
+    p.t = 0; p.life = o.life || 1; p.s.visible = true;
+    p.s.position.copy(o.pos); p.v = (o.vel || new V()).clone(); p.g = o.grav || 0; p.drag = o.drag || 0;
+    p.s0 = o.s0 || 0.08; p.s1 = o.s1 != null ? o.s1 : p.s0; p.c = o.cols || [0xffffff]; p.a = o.alpha != null ? o.alpha : 1;
+    p.spin = o.spin || 0; p.orbit = o.orbit || null; p.flick = o.flick || 0;
+    p.s.material.blending = o.normal ? T.NormalBlending : T.AdditiveBlending;
+  }
+  function updateParts(dt) {
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i]; if (p.t < 0) continue;
+      p.t += dt; var k = p.t / p.life;
+      if (k >= 1) { p.t = -1; p.s.visible = false; continue; }
+      if (p.orbit) { // spiral around the heroine
+        var o = p.orbit; o.a += o.w * dt; o.y += o.vy * dt; o.r += (o.vr || 0) * dt;
+        p.s.position.set(Math.cos(o.a) * o.r, o.y, Math.sin(o.a) * o.r);
+      } else {
+        p.v.y -= p.g * dt; p.v.multiplyScalar(1 - p.drag * dt); p.s.position.addScaledVector(p.v, dt);
+      }
+      var sz = p.s0 + (p.s1 - p.s0) * k; p.s.scale.set(sz, sz, 1);
+      var cs = p.c, ck = k * (cs.length - 1), ci = Math.min(cs.length - 2, Math.floor(ck));
+      if (cs.length === 1) p.s.material.color.setHex(cs[0]);
+      else { _c0.setHex(cs[ci]); _c1.setHex(cs[ci + 1]); p.s.material.color.copy(_c0).lerp(_c1, ck - ci); }
+      var fade = k < 0.12 ? k / 0.12 : 1 - Math.pow((k - 0.12) / 0.88, 1.5);
+      p.s.material.opacity = p.a * fade * (p.flick ? 0.6 + 0.4 * Math.random() : 1);
+    }
+  }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  var _w = new V(), _w2 = new V(), _dir = new V();
+  function heroPoint(x, y, z) { return hero.localToWorld(_w.set(x, y, z)).clone(); }
+
+  // ---- violet fire from a creature's mouth ----
+  function fireFrom(holder, power, dt) {
+    if (!holder || !holder.userData.mouth) return;
+    var mw = holder.localToWorld(_w2.copy(holder.userData.mouth));
+    holder.getWorldDirection(_dir);
+    var n = Math.ceil(dt * 90 * power);
+    for (var i = 0; i < n; i++) {
+      var sp = rnd(0.9, 1.5) * power;
+      emit({ pos: mw.clone().add(new V(rnd(-0.02, 0.02), rnd(-0.02, 0.02), 0).multiplyScalar(power)),
+        vel: _dir.clone().multiplyScalar(sp).add(new V(rnd(-0.15, 0.15), rnd(0.05, 0.3), rnd(-0.15, 0.15)).multiplyScalar(power)),
+        life: rnd(0.45, 0.75), s0: 0.05 * power, s1: 0.26 * power, cols: [0xF6D2FF, 0xC06BFF, 0x8A2BE2, 0x3A0D7A], alpha: 0.6, grav: -0.6, drag: 1.2, flick: 1 });
+    }
+  }
+
+  // ---- lights & sky control (dim for the light power, day for the time power) ----
+  var LB = { hemi: hemi.intensity, key: key.intensity, rim: rim.intensity, rim2: rim2.intensity };
+  var dim = 1, dimTarget = 1, dayMix = 0, dayTarget = 0, flashBoost = 0;
+  var NIGHT = ['#07051F', '#231C66', '#4A3CB8'], DAY = ['#5FB4FF', '#A8D8FF', '#FFE2A8'];
+  function mixHex(a, b, k) { _c0.set(a); _c1.set(b); return '#' + _c0.lerp(_c1, k).getHexString(); }
+  var lastDay = -1;
+  function updateSky(dt) {
+    dim += (dimTarget - dim) * Math.min(1, dt * 6);
+    dayMix += (dayTarget - dayMix) * Math.min(1, dt * 2.2);
+    flashBoost *= Math.pow(0.02, dt);
+    var L = dim * (1 + flashBoost); glow.intensity *= Math.max(0.03, dim * dim);
+    hemi.intensity = LB.hemi * L * (1 + dayMix * 0.6); key.intensity = LB.key * L * (1 + dayMix * 0.2); rim.intensity = LB.rim * L; rim2.intensity = (lightsTuned ? 0.5 : LB.rim2) * L;
+    starMat.opacity = (0.75 + (1 - dim) * 0.25) * (1 - dayMix);
+    if (Math.abs(dayMix - lastDay) > 0.004) {
+      lastDay = dayMix;
+      var g2 = bx.createLinearGradient(0, 0, 0, 256);
+      g2.addColorStop(0, mixHex(NIGHT[0], DAY[0], dayMix)); g2.addColorStop(0.55, mixHex(NIGHT[1], DAY[1], dayMix)); g2.addColorStop(1, mixHex(NIGHT[2], DAY[2], dayMix));
+      bx.fillStyle = g2; bx.fillRect(0, 0, 4, 256); bgTex.needsUpdate = true;
+      scene.fog.color.set(mixHex('#231C66', '#A8D8FF', dayMix));
+    }
+  }
+
+  // ---- effect objects ----
+  var FX = [];
+  function addFx(o) { o.t = 0; o.fired = {}; FX.push(o); return o; }
+  function once(o, key, t) { if (o.t >= t && !o.fired[key]) { o.fired[key] = 1; return true; } return false; }
+  function updateFx(dt) {
+    for (var i = FX.length - 1; i >= 0; i--) {
+      var f = FX[i]; f.t += dt; f.step(f.t, dt, f);
+      if (f.t >= f.dur) { if (f.end) f.end(); FX.splice(i, 1); }
+    }
+  }
+  var addMesh = function (m) { scene.add(m); return m; };
+  var bolts = [];
+  function makeBolt(x, z) {
+    var pts = [], y = 4.2, px = x + rnd(-0.6, 0.6), pz = z + rnd(-0.4, 0.4);
+    for (var i = 0; i <= 12; i++) { var k = i / 12; pts.push(new V(px + (x - px) * k + (i && i < 12 ? rnd(-0.18, 0.18) : 0), y * (1 - k), pz + (z - pz) * k + (i && i < 12 ? rnd(-0.12, 0.12) : 0))); }
+    var curve = new T.CatmullRomCurve3(pts, false, 'catmullrom', 0.1);
+    var core = new T.Mesh(new T.TubeGeometry(curve, 48, 0.014, 5), new T.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+    var halo = new T.Mesh(new T.TubeGeometry(curve, 48, 0.05, 6), new T.MeshBasicMaterial({ color: 0xA77BFF, transparent: true, opacity: 0.6, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+    var g = new T.Group(); g.add(core); g.add(halo); scene.add(g); return g;
+  }
+  function killMesh(m) { scene.remove(m); m.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+
+  var POWERS = {
+    // 1 · Étincelle: switches the lights off, then lights them again with a snap
+    1: function () { return addFx({ dur: 4.6, step: function (t, dt, f) {
+      if (once(f, 'off', 0)) dimTarget = 0.12;
+      if (t > 0.5 && t < 1.25) emit({ pos: heroPoint(0.32, 1.25, 0.25), vel: new V(rnd(-0.2, 0.2), rnd(0, 0.3), rnd(-0.2, 0.2)), life: 0.4, s0: 0.05, s1: 0.18, cols: [0xFFF6C8, 0xFFC23D] });
+      if (once(f, 'on', 1.3)) {
+        dimTarget = 1; flashBoost = 1.2; camShake = 0.04;
+        for (var i = 0; i < 18; i++) { var a = i / 18 * Math.PI * 2; emit({ pos: heroPoint(0.3, 1.25, 0.25), vel: new V(Math.cos(a) * 1.4, rnd(0.2, 1.2), Math.sin(a) * 1.4), life: 2.6, s0: 0.17, s1: 0.07, cols: [0xFFFFFF, 0xFFE08A, 0xFFC23D], drag: 2.2, grav: -0.15 }); }
+        for (var j = 0; j < 30; j++) emit({ pos: new V(0, 0, 0), orbit: { a: rnd(0, 6.3), w: rnd(0.8, 1.6), r: rnd(0.6, 1.2), y: rnd(0.2, 2.2), vy: rnd(0.05, 0.25) }, life: rnd(1.8, 3.2), s0: 0.06, s1: 0.03, cols: [0xFFF6C8, 0xFFC23D], flick: 1 });
+      }
+    } }); },
+    // 2 · Éclair: lightning strikes around her, speed lines, a thought-wave to her companion
+    2: function () { return addFx({ dur: 3.6, step: function (t, dt, f) {
+      [0.2, 0.55, 0.9, 1.25, 1.55].forEach(function (bt, i) {
+        if (once(f, 'b' + i, bt)) { var a = rnd(0, 6.3), r = rnd(0.7, 1.0), b = makeBolt(Math.cos(a) * r, Math.sin(a) * r * 0.6 - 0.2); bolts.push({ m: b, t: 0 }); flashBoost = 0.9; camShake = 0.06;
+          for (var k = 0; k < 16; k++) emit({ pos: new V(Math.cos(a) * r, 0.05, Math.sin(a) * r * 0.6 - 0.2), vel: new V(rnd(-1, 1), rnd(0.4, 1.6), rnd(-1, 1)), life: 0.6, s0: 0.06, s1: 0.02, cols: [0xFFFFFF, 0xC8B0FF], grav: 4 }); }
+      });
+      if (t > 1.6 && t < 2.6) for (var s = 0; s < 3; s++) { var y = rnd(0.2, 1.9), side = Math.random() < 0.5 ? -1 : 1; emit({ pos: new V(side * 1.6, y, rnd(-0.2, 0.4)), vel: new V(-side * 6, 0, 0), life: 0.35, s0: 0.05, s1: 0.05, cols: [0xFFFFFF, 0xA77BFF], alpha: 0.8 }); }
+      if (t > 2.2 && t < 3.4 && Math.random() < dt * 8) { var hp = heroPoint(0, 1.72, 0), pp = pet.getWorldPosition(new V()); pp.y += 0.4; for (var w = 0; w < 6; w++) { var kk = w / 6; emit({ pos: hp.clone().lerp(pp, kk), vel: new V(0, 0.15, 0), life: 0.5, s0: 0.04, s1: 0.12, cols: [0xFFC8F4, 0xB45CFF], alpha: 0.7 }); } }
+    } }); },
+    // 3 · Cœur des eaux: water spirals up around her, freezes into ice crystals, which burst
+    3: function () { var ice = []; return addFx({ dur: 4.6, step: function (t, dt, f) {
+      if (t < 1.8) for (var i = 0; i < 4; i++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 2.6, r: rnd(0.7, 0.85), y: rnd(0, 0.2), vy: rnd(0.9, 1.3) }, life: rnd(1.0, 1.6), s0: 0.07, s1: 0.04, cols: [0xE6FBFF, 0x6FD3FF, 0x2F7BFF] });
+      if (once(f, 'freeze', 1.9)) {
+        for (var k = 0; k < 16; k++) { var a = k / 16 * Math.PI * 2, y = 0.25 + (k % 4) * 0.45;
+          var m = addMesh(new T.Mesh(new T.OctahedronGeometry(rnd(0.05, 0.1)), new T.MeshStandardMaterial({ color: 0xBFEFFF, emissive: 0x3FA8FF, emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.9 })));
+          m.position.set(Math.cos(a) * 0.8, y, Math.sin(a) * 0.8); m.scale.set(0.001, 0.001, 0.001); m.userData = { a: a, v: new V(Math.cos(a), rnd(0.2, 0.8), Math.sin(a)).multiplyScalar(rnd(1.6, 2.4)), sy: rnd(1.6, 2.6) }; ice.push(m); }
+        flashBoost = 0.5;
+      }
+      ice.forEach(function (m) {
+        var u = m.userData;
+        if (t < 3.4) { var g = Math.min(1, (t - 1.9) / 0.35); var ov = g < 1 ? 1 + Math.sin(g * Math.PI) * 0.4 : 1; m.scale.set(ov, ov * u.sy, ov); m.rotation.y += dt * 2; u.a += dt * 0.6; m.position.x = Math.cos(u.a) * 0.8; m.position.z = Math.sin(u.a) * 0.8; }
+        else { if (!u.burst) { u.burst = 1; for (var s = 0; s < 4; s++) emit({ pos: m.position.clone(), vel: u.v.clone().multiplyScalar(rnd(0.3, 0.8)), life: 0.7, s0: 0.05, s1: 0.02, cols: [0xFFFFFF, 0x8FE0FF], grav: 3 }); }
+          m.position.addScaledVector(u.v, dt); u.v.y -= 6 * dt; m.rotation.x += dt * 8; m.material.opacity = Math.max(0, 0.9 - (t - 3.4) * 0.9); }
+      });
+      if (once(f, 'shatter', 3.4)) camShake = 0.05;
+    }, end: function () { ice.forEach(killMesh); } }); },
+    // 4 · Terre et feu: the ground shakes, rocks rise, a ring of violet fire, then she teleports
+    4: function () { var rocks = []; return addFx({ dur: 5.6, step: function (t, dt, f) {
+      if (once(f, 'quake', 0.1)) { camShake = 0.09;
+        for (var k = 0; k < 9; k++) { var a = k / 9 * Math.PI * 2 + 0.3;
+          var m = addMesh(new T.Mesh(new T.DodecahedronGeometry(rnd(0.07, 0.13)), new T.MeshStandardMaterial({ color: k % 3 ? 0x8A6A4A : 0xC9A24A, roughness: 0.8, flatShading: true, metalness: k % 3 ? 0 : 0.5 })));
+          m.position.set(Math.cos(a) * 0.95, -0.2, Math.sin(a) * 0.95); m.userData = { a: a, h: rnd(0.35, 1.1), d: k * 0.06 }; rocks.push(m); } }
+      if (t < 0.6 && Math.random() < 0.5) camShake = Math.max(camShake, 0.04);
+      rocks.forEach(function (m) {
+        var u = m.userData, tt = t - 0.2 - u.d, y;
+        if (tt < 0) y = -0.2; else if (tt < 0.6) { var e = tt / 0.6, c1 = 1.70158; y = -0.2 + (u.h + 0.2) * (1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2)); }
+        else if (t < 3.3) y = u.h + Math.sin(t * 2 + u.a) * 0.05; else { y = u.h - (t - 3.3) * (t - 3.3) * 6; }
+        m.position.y = y; m.rotation.x += dt * 1.5; m.rotation.y += dt;
+        if (t >= 3.3 && y < 0 && !u.landed) { u.landed = 1; camShake = Math.max(camShake, 0.05); for (var s = 0; s < 5; s++) emit({ pos: new V(m.position.x, 0.02, m.position.z), vel: new V(rnd(-0.6, 0.6), rnd(0.3, 0.9), rnd(-0.6, 0.6)), life: 0.6, s0: 0.05, s1: 0.1, cols: [0xC9A27A, 0x6B5440], normal: true, alpha: 0.7, grav: 2 }); }
+        m.visible = y > -0.15;
+      });
+      if (t > 1.0 && t < 3.1) for (var i = 0; i < 5; i++) { var a2 = rnd(0, 6.3); emit({ pos: new V(Math.cos(a2) * 0.72, 0.02, Math.sin(a2) * 0.72), vel: new V(0, rnd(0.6, 1.1), 0), life: rnd(0.5, 0.8), s0: 0.1, s1: 0.03, cols: [0xFFFFFF, 0xD08CFF, 0x8A2BE2, 0x3A0D7A], flick: 1, grav: -0.5 }); }
+      // teleport: she vanishes in sparkles and pops back
+      if (once(f, 'tp1', 3.9)) { tpT = 0; for (var s2 = 0; s2 < 40; s2++) emit({ pos: heroPoint(rnd(-0.3, 0.3), rnd(0.1, 1.8), rnd(-0.2, 0.2)), vel: new V(rnd(-0.3, 0.3), rnd(0.5, 1.8), rnd(-0.3, 0.3)), life: 0.9, s0: 0.06, s1: 0.02, cols: [0xFFFFFF, 0xD08CFF, 0x8A2BE2] }); }
+      if (once(f, 'tp2', 4.6)) { flashBoost = 0.8; for (var s3 = 0; s3 < 24; s3++) { var a3 = s3 / 24 * Math.PI * 2; emit({ pos: new V(0, 0.1, 0), vel: new V(Math.cos(a3) * 1.8, 0.1, Math.sin(a3) * 1.8), life: 0.6, s0: 0.08, s1: 0.03, cols: [0xFFFFFF, 0xB45CFF], drag: 2 }); } }
+    }, end: function () { rocks.forEach(killMesh); } }); },
+    // 5 · Maîtresse du temps: a golden clock appears, time stops, then night turns to day and back
+    5: function () { var clockG = null, hands = []; return addFx({ dur: 7.4, step: function (t, dt, f) {
+      if (once(f, 'clock', 0)) {
+        clockG = new T.Group(); clockG.position.set(0, 1.05, -0.45);
+        var gold = new T.MeshStandardMaterial({ color: 0xFFD27A, emissive: 0xFFB020, emissiveIntensity: 0.8, metalness: 0.6, roughness: 0.3, transparent: true });
+        clockG.add(new T.Mesh(new T.TorusGeometry(1.05, 0.025, 8, 80), gold));
+        for (var i = 0; i < 12; i++) { var tk = new T.Mesh(new T.BoxGeometry(0.035, i % 3 ? 0.08 : 0.16, 0.02), gold); var a = i / 12 * Math.PI * 2; tk.position.set(Math.sin(a) * 0.93, Math.cos(a) * 0.93, 0); tk.rotation.z = -a; clockG.add(tk); }
+        [0.62, 0.85].forEach(function (L, j) { var hd = new T.Group(); var hm = new T.Mesh(new T.BoxGeometry(j ? 0.03 : 0.05, L, 0.02), gold); hm.position.y = L / 2; hd.add(hm); clockG.add(hd); hands.push(hd); });
+        clockG.scale.setScalar(0.001); scene.add(clockG);
+      }
+      if (clockG) {
+        var sc = t < 0.6 ? (function (e) { var c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2); })(t / 0.6) : t > 6.8 ? Math.max(0.001, 1 - (t - 6.8) / 0.6) : 1;
+        clockG.scale.setScalar(sc); clockG.rotation.y = Math.sin(t * 0.8) * 0.15;
+        var spd = t < 1.2 ? 6 : t < 2.8 ? 0.2 : t < 5.6 ? 14 : 3;
+        hands[0].rotation.z -= dt * spd * 0.25; hands[1].rotation.z -= dt * spd;
+      }
+      // time stops: everything around her freezes for a moment
+      timeScale = (t > 1.2 && t < 2.8) ? 0.03 : 1;
+      if (once(f, 'freeze', 1.2)) { flashBoost = 0.7; for (var s = 0; s < 30; s++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 0.15, r: rnd(0.5, 1.3), y: rnd(0.1, 2.2), vy: 0 }, life: 1.6, s0: 0.05, s1: 0.05, cols: [0xFFE7A8, 0xFFFFFF] }); }
+      if (once(f, 'day', 3.0)) { dayTarget = 1; for (var s2 = 0; s2 < 24; s2++) emit({ pos: new V(rnd(-2, 2), rnd(2.4, 3.4), rnd(-2.5, -1)), vel: new V(0, -0.2, 0), life: 2, s0: 0.2, s1: 0.4, cols: [0xFFF2C8, 0xFFD27A], alpha: 0.5 }); }
+      if (once(f, 'night', 5.4)) dayTarget = 0;
+    }, end: function () { if (clockG) killMesh(clockG); timeScale = 1; dayTarget = 0; } }); }
+  };
+  var timeScale = 1, tpT = -1;
+  function power(n, withGesture) {
+    n = Math.max(1, Math.min(5, n || level));
+    if (withGesture !== false) act('spell', 2.7);
+    return POWERS[n]();
+  }
+
+  // ---- transformation between two levels ----
+  var transT = -1, transTo = 0, transDone = null, transLift = 0, transSpin = 0, columnG = null, ringM = null, flashQuad = null;
+  (function () {
+    var cv = document.createElement('canvas'); cv.width = 4; cv.height = 128; var g = cv.getContext('2d'), gr2 = g.createLinearGradient(0, 0, 0, 128);
+    gr2.addColorStop(0, 'rgba(255,255,255,0)'); gr2.addColorStop(0.35, 'rgba(255,240,200,0.55)'); gr2.addColorStop(1, 'rgba(255,220,140,1)'); g.fillStyle = gr2; g.fillRect(0, 0, 4, 128);
+    var colTex = new T.CanvasTexture(cv);
+    columnG = new T.Mesh(new T.CylinderGeometry(0.7, 0.85, 4, 40, 1, true), new T.MeshBasicMaterial({ map: colTex, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false, color: 0xFFE7A8 }));
+    columnG.position.y = 2; columnG.visible = false; scene.add(columnG);
+    ringM = new T.Mesh(new T.RingGeometry(0.5, 0.62, 64), new T.MeshBasicMaterial({ color: 0xFFD27A, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false }));
+    ringM.rotation.x = -Math.PI / 2; ringM.position.y = 0.03; ringM.visible = false; scene.add(ringM);
+    flashQuad = new T.Mesh(new T.PlaneGeometry(4, 4), new T.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
+    flashQuad.renderOrder = 999; flashQuad.position.z = -0.5; camera.add(flashQuad); scene.add(camera); flashQuad.visible = false;
+  })();
+  function transform(n, done) {
+    transTo = Math.max(1, Math.min(5, n)); transDone = done || null;
+    // get the new outfit and companion ready before the show starts
+    var forms = ['heroine_v' + transTo], left = 0, started = false;
+    var start = function () { if (started) return; started = true; transT = 0; };
+    forms.forEach(function (fm) { left++; loadForm(fm, function () { if (--left <= 0) start(); }); });
+    setTimeout(start, 6000);
+  }
+  function updateTransform(dt) {
+    if (transT < 0) { transLift += (0 - transLift) * Math.min(1, dt * 6); transSpin *= Math.pow(0.05, dt); return; }
+    transT += dt; var t = transT;
+    // 0–1.6: golden ring at her feet, light column rises, she lifts off and spins faster and faster
+    ringM.visible = columnG.visible = true;
+    var rg = Math.min(1, t / 0.5); ringM.scale.setScalar(0.6 + rg * 0.8 + Math.sin(t * 6) * 0.03); ringM.material.opacity = t < 3.2 ? rg * 0.9 : Math.max(0, 0.9 - (t - 3.2) * 1.5);
+    var co = t < 0.5 ? 0 : t < 1.5 ? (t - 0.5) : t < 3.0 ? 1 : Math.max(0, 1 - (t - 3.0) / 0.8);
+    columnG.material.opacity = co * 0.42; columnG.scale.set(1, Math.min(1, co * 1.2 + 0.01), 1); columnG.position.y = 2 * columnG.scale.y; columnG.rotation.y += dt * 1.5;
+    var liftT = t < 0.6 ? 0 : t < 2.2 ? (t - 0.6) / 1.6 : t < 3.0 ? 1 : Math.max(0, 1 - (t - 3.0) / 0.35);
+    transLift = liftT * liftT * (3 - 2 * liftT) * 0.35;
+    if (t > 0.6 && t < 3.1) transSpin += dt * (t < 2.2 ? 4 + (t - 0.6) * 9 : Math.max(0, 18 - (t - 2.2) * 22));
+    if (t > 0.3 && t < 2.4) for (var i = 0; i < 4; i++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 4, r: rnd(0.45, 0.7), y: rnd(0, 0.3), vy: rnd(1.3, 2.0) }, life: rnd(0.9, 1.4), s0: 0.06, s1: 0.03, cols: [0xFFFFFF, 0xFFE08A, 0xFFC23D] });
+    zoomOverride = t < 3.6 ? 0.82 : null;
+    // 2.2: white flash — the new outfit appears behind it
+    var fq = t < 2.0 ? 0 : t < 2.25 ? (t - 2.0) / 0.25 : Math.max(0, 1 - (t - 2.25) / 0.7);
+    flashQuad.visible = fq > 0.001; flashQuad.material.opacity = fq;
+    if (t >= 2.25 && transTo !== level) { setLevel(transTo); camShake = 0.08; }
+    if (t > 2.3 && t < 2.32 + dt) { for (var k = 0; k < 50; k++) { var a = rnd(0, 6.3); emit({ pos: heroPoint(0, 1.1, 0), vel: new V(Math.cos(a) * rnd(1, 2.6), rnd(-0.6, 1.6), Math.sin(a) * rnd(1, 2.6)), life: rnd(0.9, 1.6), s0: 0.1, s1: 0.03, cols: [0xFFFFFF, 0xFFE08A, 0xB45CFF], drag: 1.5, grav: 0.5 }); } }
+    if (t >= 3.3 && !transVictory) { transVictory = true; act('victory', 4.5); }
+    if (t >= 7.2) { transT = -1; transVictory = false; ringM.visible = columnG.visible = false; zoomOverride = null; var d = transDone; transDone = null; if (d) d(); }
+  }
+  var transVictory = false, zoomOverride = null;
+
+  // ================= The big brothers' heroes visit: Thib + Alor the wolf, Val + his lion =================
+  var mentorRoot = new T.Group(); scene.add(mentorRoot);
+  var MENTORS = {
+    thib: { mount: 'loup', col: 0x6FA8FF, col2: 0xFFC23D, mountCall: 'howl' },
+    val: { mount: 'lion', col: 0x3DDB8A, col2: 0xFFC23D, mountCall: 'roar' }
+  };
+  var MP = { person: new V(-0.98, 0, 0.36), mount: new V(-2.0, 0, -0.55) };
+  var discMat = new T.MeshBasicMaterial({ color: 0x6FA8FF, transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide });
+  var disc = new T.Group(); mentorRoot.add(disc);
+  var discFloor = new T.Mesh(new T.CylinderGeometry(0.95, 1.02, 0.08, 64), phys(0x1E1868, { metalness: 0.4, roughness: 0.35, clearcoat: 1 })); discFloor.position.y = -0.056; discFloor.receiveShadow = true; disc.add(discFloor);
+  var discRing = new T.Mesh(new T.TorusGeometry(0.98, 0.014, 10, 96), discMat); discRing.rotation.x = Math.PI / 2; discRing.position.y = -0.01; disc.add(discRing);
+  var discRing2 = new T.Mesh(new T.TorusGeometry(0.7, 0.008, 10, 96), discMat); discRing2.rotation.x = Math.PI / 2; discRing2.position.y = -0.01; disc.add(discRing2);
+  var beamMat = new T.ShaderMaterial({ uniforms: { color: { value: new T.Color(0xFFFFFF) }, opacity: { value: 0 }, time: { value: 0 } }, transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide,
+    vertexShader: 'varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vec4 w = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-w.xyz); gl_Position = projectionMatrix * w; }',
+    fragmentShader: 'uniform vec3 color; uniform float opacity, time; varying vec2 vUv; varying vec3 vN; varying vec3 vV;\nvoid main(){ float edge = pow(abs(dot(vN, vV)), 1.6); float fade = smoothstep(0.0, 0.08, vUv.y) * (1.0 - smoothstep(0.25, 1.0, vUv.y)); float rays = 0.75 + 0.25 * sin(vUv.x * 40.0 + time * 3.0) * sin(vUv.x * 17.0 - time * 2.0);\nvec3 c = mix(color, vec3(1.0), 0.45); gl_FragColor = vec4(c * edge * fade * rays * opacity * 1.6, 1.0); }' });
+  Object.defineProperty(beamMat, 'opacity', { get: function () { return beamMat.uniforms.opacity.value; }, set: function (v) { if (beamMat.uniforms) beamMat.uniforms.opacity.value = v; } });
+  beamMat.color = beamMat.uniforms.color.value;
+  var beam = new T.Mesh(new T.CylinderGeometry(0.42, 0.55, 4.5, 40, 1, true), beamMat); beam.position.y = 2.25; disc.add(beam);
+  disc.position.set((MP.person.x + MP.mount.x) / 2, 0, (MP.person.z + MP.mount.z) / 2); disc.visible = false;
+  var mentorLight = new T.PointLight(0x6FA8FF, 0, 4, 2); mentorRoot.add(mentorLight);
+  var M_ = { who: null, t: -1, person: null, mount: null, dur: 12, leaveAt: -1, cam: 0, onDone: null, poseQ: [], hop: 0, react: -1 };
+  function mentorBurst(p, c1, c2, n, up) {
+    var w = mentorRoot.localToWorld(p.clone());
+    for (var i = 0; i < (n || 30); i++) { var a = Math.random() * Math.PI * 2, sp = rnd(0.5, 1.6);
+      emit({ pos: w.clone().add(new V(0, rnd(0.1, 1.6), 0)), vel: new V(Math.cos(a) * sp, rnd(0.2, 1.4) * (up || 1), Math.sin(a) * sp), life: rnd(0.9, 1.8), s0: rnd(0.08, 0.16), s1: 0.02, cols: [0xFFFFFF, c1, c2], drag: 2, grav: 0.4 }); }
+  }
+
+  // Real skeleton (Meshy rig + library clips): same small interface as the shader rig
+  var BRO_CLIPS = { idle: /breathe|idle/i, wave: /wave/i, victory: /victory/i, talk: /talk/i, point: /spell|soell|cast/i, bow: /bow/i, jump: /jump/i, walk: /walking/i };
+  function skelRig(holder) {
+    var clips = holder.userData.clips || []; if (!clips.length) return null;
+    var mx = new T.AnimationMixer(holder.children[0]), cur = null, idle = null, until = 0, t = 0, name = 'idle';
+    var find = function (k) { var re = BRO_CLIPS[k] || new RegExp(k, 'i'); return clips.filter(function (c) { return re.test(c.name); })[0]; };
+    var ic = find('idle'); if (ic) { idle = mx.clipAction(ic); idle.setLoop(T.LoopRepeat, Infinity); idle.play(); }
+    return {
+      skeletal: true,
+      update: function (dt) {
+        t += dt;
+        if (cur && t > until) { cur.fadeOut(0.35); cur = null; name = 'idle'; if (idle) { idle.reset(); idle.fadeIn(0.35); idle.play(); } }
+        mx.update(dt);
+      },
+      pose: function (k, dur) {
+        var c = find(k); if (!c) return;
+        var a = mx.clipAction(c), loop = k === 'talk' || k === 'walk';
+        if (cur && cur !== a) cur.fadeOut(0.3); if (idle) idle.fadeOut(0.3);
+        a.reset(); a.setLoop(loop ? T.LoopRepeat : T.LoopOnce, loop ? Infinity : 1); a.clampWhenFinished = true; a.fadeIn(0.3); a.play();
+        cur = a; name = k; until = t + (loop ? (dur || c.duration) : Math.min(c.duration, dur ? Math.max(dur, c.duration * 0.6) : c.duration) - 0.25);
+      },
+      look: function () {},
+      current: function () { return name; }
+    };
+  }
+  function mentorVisit(who, o) {
+    o = o || {};
+    var cfg = MENTORS[who]; if (!cfg) return false;
+    if (M_.t >= 0) mentorEnd(true);
+    M_ = { who: who, t: 0, person: null, mount: null, dur: o.dur || 12, leaveAt: -1, cam: M_.cam || 0, onDone: o.done || null, cheer: !!o.cheer, hop: 0, react: -1, onSay: o.say || null, said: {}, turn: 0, mt: 0, callT: -1, walk: null };
+    discMat.color.setHex(cfg.col); mentorLight.color.setHex(cfg.col); beamMat.color.setHex(cfg.col);
+    M_.off = 0; M_.duo = null; M_.duoWait = true;
+    tryForm(who + '_duo', function (h) { if (M_.who !== who) return; M_.duoWait = false; if (h && !o.noDuo && !M_.walk) { M_.duo = h; M_.off = 1.7; h.visible = false; mentorRoot.add(h); } });
+    // prefer the real skeleton when its file exists, else the cartoon shader rig
+    tryForm(who + '_anim', function (h) {
+      if (M_.who !== who) return;
+      var use = function (h2) { if (M_.who !== who) return; M_.person = h2; h2.visible = false; mentorRoot.add(h2); h2.position.copy(MP.person); };
+      if (h) { if (!h.userData.hrig) h.userData.hrig = skelRig(h); use(h); } else loadForm(who, use);
+    });
+    M_.mountWait = true;
+    tryForm(cfg.mount + '_walk', function (h) {
+      if (M_.who !== who) return;
+      var use = function (h2, walk) { if (M_.who !== who) return; M_.mountWait = false; M_.mount = h2; h2.visible = false; mentorRoot.add(h2); h2.position.copy(MP.mount);
+        if (walk && h2.userData.clips.length) { var mx = new T.AnimationMixer(h2.children[0]); var a = mx.clipAction(h2.userData.clips[0]); a.play(); M_.walk = { mx: mx, a: a, w: 1 }; M_.off = 0; if (M_.duo) { mentorRoot.remove(M_.duo); M_.duo = null; } } };
+      if (h) use(h, true); else loadForm(cfg.mount, function (h2) { use(h2, false); });
+    });
+    return true;
+  }
+  function mentorEnd(now) {
+    if (M_.person) { M_.person.visible = false; if (M_.person.parent) mentorRoot.remove(M_.person); }
+    if (M_.mount) { M_.mount.visible = false; if (M_.mount.parent) mentorRoot.remove(M_.mount); }
+    disc.visible = false; mentorLight.intensity = 0; beamMat.opacity = 0;
+    var d = M_.onDone; M_.t = -1; M_.who = null; M_.onDone = null; if (d && !now) d();
+  }
+  function mentorLeave() { if (M_.t >= 0 && M_.leaveAt < 0) M_.leaveAt = M_.t - (M_.off || 0); }
+  function popScale(u) { if (u <= 0) return 0.001; if (u >= 1) return 1; var c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); }
+  function updateMentor(time, dt) {
+    mentorRoot.rotation.y = rotY;
+    var active = M_.t >= 0;
+    M_.cam += ((active && (M_.leaveAt < 0 || M_.t - M_.leaveAt < 0.9) ? 1 : 0) - M_.cam) * Math.min(1, dt * 2.5);
+    if (!active) return;
+    M_.t += dt; var t = M_.t, cfg = MENTORS[M_.who], P = M_.person, Mo = M_.mount;
+    if (!P || !Mo || M_.duoWait || M_.mountWait) { M_.wait = (M_.wait || 0) + dt; M_.t = 0; if (M_.wait > 10) mentorEnd(true); return; }
+    // optional: the hero gallops in on his mount, then jumps down in a puff of magic
+    var D = M_.duo;
+    if (D) {
+      var gt = t - 0.2, gEnd = M_.off;
+      if (gt < 0 || t >= gEnd) { D.visible = false; if (t >= gEnd && !M_.said.dpoof) { M_.said.dpoof = 1; mentorBurst(MP.mount, cfg.col, cfg.col2, 40); flashBoost = 0.8; camShake = 0.05; } }
+      else {
+        D.visible = true; var gk = Math.min(1, gt / (gEnd - 0.5)), ge = 1 - Math.pow(1 - gk, 2);
+        var gx = -3.8 + (MP.mount.x + 0.3 + 3.8) * ge, gal = gk < 1 ? Math.abs(Math.sin(gt * 9)) : 0;
+        D.position.set(gx, gal * 0.12, MP.mount.z * 0.5); D.rotation.y = Math.PI / 2 - 0.25; D.rotation.z = Math.sin(gt * 9) * 0.06 * (1 - gk);
+        var ds = gt > gEnd - 0.45 ? Math.max(0.001, 1 - (gt - (gEnd - 0.45)) / 0.25) : 1; D.scale.setScalar(ds);
+        if (Math.random() < 0.5) emit({ pos: mentorRoot.localToWorld(new V(gx - 0.4, 0.05, MP.mount.z * 0.5)), vel: new V(rnd(-0.6, -0.2), rnd(0.2, 0.6), rnd(-0.2, 0.2)), life: 0.7, s0: 0.08, s1: 0.02, cols: [cfg.col2, cfg.col] });
+      }
+    }
+    t = t - M_.off; if (t < 0) { P.visible = false; Mo.visible = false; disc.visible = true; disc.scale.set(1, 1, 1); return; }
+    var hr = P.userData.hrig, cr = Mo.userData.rig;
+    if (M_.leaveAt < 0 && t > M_.dur) M_.leaveAt = t;
+    var lt = M_.leaveAt >= 0 ? t - M_.leaveAt : -1;
+    // portal: disc grows, a light beam falls, sparkles rise
+    disc.visible = true;
+    var dk = (M_.off ? 1 : popScale(Math.min(1, t / 0.6))) * (lt >= 0 ? Math.max(0.001, 1 - Math.max(0, lt - 1.0) / 0.5) : 1);
+    disc.scale.set(dk, 1, dk);
+    discRing.rotation.z = time * 0.6; discRing2.rotation.z = -time * 0.9;
+    discMat.opacity = 0.45 + Math.sin(time * 3) * 0.15;
+    var bk = t < 0.35 ? t / 0.35 : t < 1.2 ? 1 - (t - 0.35) / 0.85 : 0;
+    if (lt >= 0) bk = Math.max(bk, lt < 0.6 ? 0 : lt < 0.8 ? (lt - 0.6) / 0.2 : Math.max(0, 1 - (lt - 0.8) / 0.6));
+    beamMat.opacity = 0.5 * bk; beamMat.uniforms.time.value = time; beam.scale.set(1 + bk * 0.2, 1, 1 + bk * 0.2);
+    mentorLight.position.set(disc.position.x, 1.2, disc.position.z + 0.4); mentorLight.intensity = 2.5 * bk + 0.6 * (lt < 0 ? 1 : Math.max(0, 1 - lt));
+    if (t < 1.0 && Math.random() < 0.6) emit({ pos: mentorRoot.localToWorld(disc.position.clone().add(new V(rnd(-0.8, 0.8), 0.05, rnd(-0.8, 0.8)))), vel: new V(0, rnd(0.8, 1.8), 0), life: rnd(0.8, 1.4), s0: 0.07, s1: 0.02, cols: [0xFFFFFF, cfg.col, cfg.col2] });
+    // arrivals: the hero drops in with a squash, then the mount
+    var pIn = t - (M_.off ? 0.0 : 0.45), mIn = t - (M_.off ? 0.05 : 0.8), ps = 1, ms = 1, py = 0, sq = 1;
+    if (pIn < 0) { P.visible = false; } else {
+      P.visible = true;
+      if (pIn < 0.35) { var fall = pIn / 0.35; py = (1 - fall * fall) * (M_.off ? 0.35 : 0.9); sq = 1 + 0.12 * fall; }
+      else if (pIn < 0.7) { var land = (pIn - 0.35) / 0.35; sq = 1 - 0.22 * Math.sin(land * Math.PI); }
+      if (pIn >= 0 && !M_.said.land) { M_.said.land = 1; mentorBurst(MP.person, cfg.col, cfg.col2, 34); camShake = 0.05; flashBoost = 0.6; if (hr) hr.pose('wave', 2.4); act('wave', 3); }
+    }
+    if (M_.walk) { mIn = t; Mo.visible = true; if (!M_.said.mount) M_.said.mount = 1; if (t > 2.7 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); } }
+    else if (mIn < 0) { Mo.visible = false; } else {
+      Mo.visible = true; ms = popScale(Math.min(1, mIn / 0.55));
+      if (!M_.said.mount) { M_.said.mount = 1; mentorBurst(MP.mount, cfg.col, cfg.col2, 26); if (cr) { cr.happy(2.5); } }
+      if (mIn > 0.9 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); }
+    }
+    // speech beats (the page shows the words)
+    if (t > 2.0 && !M_.said.s1) { M_.said.s1 = 1; if (hr) hr.pose('talk', 3.4); if (M_.onSay) M_.onSay(0); }
+    if (t > 6.2 && !M_.said.s2 && M_.dur > 8) { M_.said.s2 = 1; if (hr) hr.pose(M_.who === 'val' ? 'victory' : 'point', 2.2); if (M_.onSay) M_.onSay(1); mentorPower(M_.who); setTimeout(function () { act(M_.cheer ? 'victory' : 'jump', 3); }, 1000); }
+    // leaving: a last wave, then they shrink into the beam
+    if (lt >= 0) {
+      if (!M_.said.bye) { M_.said.bye = 1; if (hr) hr.pose('wave', 1.2); if (cr) cr.happy(1.2); if (M_.onSay) M_.onSay(-1); }
+      var lk = Math.max(0, (lt - 0.8) / 0.45);
+      ps = lk > 0 ? Math.max(0.001, 1 - lk) * (1 + Math.sin(Math.min(1, lk) * Math.PI) * 0.2) : 1; ms = Math.min(ms, ps);
+      if (lk > 0 && !M_.said.gone) { M_.said.gone = 1; mentorBurst(MP.person, cfg.col, cfg.col2, 40, 1.4); mentorBurst(MP.mount, cfg.col, cfg.col2, 30, 1.4); }
+      if (lt > 1.6) { mentorEnd(false); return; }
+    }
+    // reaction to a tap on the screen
+    if (M_.react >= 0) { M_.react += dt; if (M_.react > 1.2) M_.react = -1; }
+    var hopY = M_.react >= 0 ? Math.sin(Math.min(1, M_.react / 0.6) * Math.PI) * 0.25 : 0;
+    // idle life: breathing bob, sway, look at the heroine now and then
+    var bob = Math.sin(time * 2.1) * 0.006;
+    P.position.set(MP.person.x, py + hopY, MP.person.z);
+    P.rotation.y = 0.5 + Math.sin(time * 0.5) * 0.06; P.rotation.z = Math.sin(time * 0.8) * 0.012;
+    var pS = (pIn < 0 ? 0.001 : 1) * ps;
+    P.scale.set(pS * (1 + (1 - sq) * 0.5), pS * sq * (1 + bob), pS * (1 + (1 - sq) * 0.5));
+    if (hr) { if (Math.random() < dt * 0.25 && hr.current() === 'idle') hr.look(0.35, 0.05, 0.05, 1.6); hr.update(dt); }
+    var WK = M_.walk;
+    if (WK) {
+      // real walk: comes in from the left side of the stage, slows down, turns to face the heroine
+      var wt = t, wDur = 2.6, wk = Math.min(1, Math.max(0, wt / wDur)), we = 1 - Math.pow(1 - wk, 2.2);
+      var sx = MP.mount.x - 3.0, mxp = sx + (MP.mount.x - sx) * we;
+      var leaving = lt >= 0 && lt > 0.2;
+      Mo.position.set(mxp, 0, MP.mount.z);
+      var face = Math.PI / 2, rest = 0.55 + Math.sin(time * 0.4) * 0.05 + M_.turn;
+      var turnK = Math.min(1, Math.max(0, (wt - wDur + 0.5) / 0.7));
+      Mo.rotation.y = face + (rest - face) * (turnK * turnK * (3 - 2 * turnK));
+      var spd = wk < 1 ? (1 - wk) * 2.2 + 0.25 : 0; // stride speed follows the ground speed
+      WK.w += ((wk < 1 ? 1 : 0) - WK.w) * Math.min(1, dt * 3);
+      WK.a.setEffectiveWeight(WK.w); WK.a.setEffectiveTimeScale(Math.max(0.35, spd) * 1.25);
+      WK.mx.update(dt);
+      if (wk < 1 && Math.random() < 0.5) emit({ pos: mentorRoot.localToWorld(new V(mxp - 0.3, 0.04, MP.mount.z + rnd(-0.2, 0.2))), vel: new V(rnd(-0.4, -0.1), rnd(0.15, 0.4), rnd(-0.1, 0.1)), life: 0.7, s0: 0.06, s1: 0.015, cols: [cfg.col2, 0xFFFFFF] });
+      ms = Math.min(ms, wt < 0.05 ? 0.001 : 1); if (lt >= 0) ms = Math.min(ms, ps);
+    } else {
+    Mo.position.set(MP.mount.x, 0, MP.mount.z);
+    Mo.rotation.y = 0.55 + Math.sin(time * 0.4) * 0.05 + M_.turn;
+    }
+    var mb = 1 + Math.sin(time * 1.7) * 0.01;
+    Mo.scale.set(ms, ms * mb, ms);
+    if (cr) {
+      M_.mt = (M_.mt || 0) - dt;
+      if (M_.mt <= 0 && mIn > 2) { // little acts now and then: wag, look at the heroine, call again
+        var r = Math.random(); M_.mt = 2.2 + Math.random() * 2.5;
+        if (r < 0.35) cr.happy(1.6); else if (r < 0.7) cr.look(0.45, 0.05, 0.1, 1.6); else if (r < 0.85) { cr.look(0, -0.42, 0, 1.2); M_.callT = 0; } else cr.look(-0.3, 0.2, -0.1, 1.2);
+      }
+      var calling = M_.callT != null && M_.callT >= 0; if (calling) { M_.callT += dt; if (M_.callT > 1.2) M_.callT = -1; }
+      if (mIn > 0.9 && mIn < 2.1) calling = true;
+      if (calling && Math.random() < dt * 25) { var mw = Mo.localToWorld(new V(0, FORMS[cfg.mount].h * 0.9 / Mo.scale.x, 0.5 / Mo.scale.x)); emit({ pos: mw, vel: new V(rnd(-0.2, 0.2), rnd(0.4, 0.9), rnd(0.1, 0.4)), life: 0.9, s0: 0.05, s1: 0.2, cols: [0xFFFFFF, cfg.col, cfg.col2], alpha: 0.7, drag: 1 }); }
+      M_.turn += ((calling ? -0.25 : 0) - M_.turn) * Math.min(1, dt * 3);
+      cr.update(dt, calling ? 'roar' : 'idle');
+    }
+  }
+
+
+  function handPos(fallback, up) { // world position of the right hand bone when the hero has a real skeleton
+    var P = M_.person, b = null; if (!P) return fallback;
+    P.traverse(function (o) { if (!b && o.isBone && /RightHand$/.test(o.name)) b = o; });
+    if (!b) return fallback;
+    var w = new V(); b.getWorldPosition(w); w.y += up || 0; return w;
+  }
+  // the brothers' own powers, aimed at the heroine to bless her
+  function mentorPower(who) {
+    var P = MP.person;
+    if (who === 'thib') return addFx({ dur: 2.6, step: function (t, dt, f) {
+      var hand = handPos(M_.person ? M_.person.localToWorld(new V(0.95, 1.12, 0.45)) : mentorRoot.localToWorld(new V(P.x + 0.55, 1.28, P.z + 0.35)), 0.05);
+      if (t < 1.3) for (var i = 0; i < 5; i++) { var tgt = heroPoint(rnd(-0.2, 0.2), rnd(0.7, 1.6), rnd(-0.1, 0.2)); var v = tgt.sub(hand).multiplyScalar(rnd(1.1, 1.6));
+        emit({ pos: hand.clone(), vel: v.add(new V(0, rnd(0.2, 0.6), 0)), life: rnd(0.6, 0.85), s0: 0.16, s1: 0.06, cols: [0xFFFFFF, 0x8FC2FF, 0xFFC23D], grav: 0.5, flick: 1 }); }
+      if (once(f, 'ring', 0.9)) { flashBoost = 0.5; for (var j = 0; j < 70; j++) emit({ pos: new V(0, 0, 0), orbit: { a: j / 70 * 12.56, w: 2.2, r: 0.55, y: 0.1 + j / 70 * 1.9, vy: 0.25, vr: 0.08 }, life: 1.8, s0: 0.15, s1: 0.05, cols: [0xFFFFFF, 0x6FA8FF, 0xFFC23D], flick: 1 }); }
+      if (once(f, 'star', 1.5)) { for (var k = 0; k < 24; k++) { var a = k / 24 * 6.28; emit({ pos: heroPoint(0, 2.05, 0), vel: new V(Math.cos(a) * 1.1, Math.sin(a) * 1.1, 0), life: 1.1, s0: 0.12, s1: 0.03, cols: [0xFFFFFF, 0xFFE08A, 0x6FA8FF], drag: 2.5 }); } }
+    } });
+    return addFx({ dur: 2.8, step: function (t, dt, f) {
+      var tip = handPos(M_.person ? M_.person.localToWorld(new V(-0.46, 1.8, 0.26)) : mentorRoot.localToWorld(new V(P.x - 0.42, 2.0, P.z + 0.35)), 0.55);
+      if (t < 1.1) for (var i = 0; i < 5; i++) emit({ pos: tip.clone().add(new V(rnd(-0.05, 0.05), rnd(-0.05, 0.05), 0)), vel: new V(rnd(-0.5, 0.5), rnd(0.2, 1.0), rnd(-0.5, 0.5)), life: 0.7, s0: 0.16, s1: 0.04, cols: [0xFFFFFF, 0x7CFFB0, 0x1E9E5A], flick: 1 });
+      if (once(f, 'zap', 0.9)) { camShake = 0.06; flashBoost = 0.7; var b = makeBolt(0, 0); b.traverse(function (o) { if (o.material && o.material.color && o.material.opacity < 1) o.material.color.setHex(0x3DDB8A); }); bolts.push({ m: b, t: 0 });
+        for (var j = 0; j < 40; j++) { var a = j / 40 * 6.28; emit({ pos: heroPoint(Math.cos(a) * 0.5, 0.05, Math.sin(a) * 0.5), vel: new V(Math.cos(a) * 0.4, rnd(0.6, 1.6), Math.sin(a) * 0.4), life: rnd(1.0, 1.6), s0: 0.15, s1: 0.04, cols: [0xFFFFFF, 0x7CFFB0, 0xFFC23D], drag: 0.8 }); } }
+      if (t > 0.95 && t < 2.2) emit({ pos: new V(0, 0, 0), orbit: { a: rnd(0, 6.3), w: 1.4, r: rnd(0.55, 0.75), y: rnd(0.1, 0.4), vy: rnd(0.4, 0.9) }, life: 1.4, s0: 0.08, s1: 0.03, cols: [0x7CFFB0, 0xFFC23D] });
+    } });
+  }
+  function mentorTap() { if (M_.t < 0 || M_.leaveAt >= 0 || !M_.person) return; M_.react = 0; var hr = M_.person.userData.hrig, cr = M_.mount && M_.mount.userData.rig; if (hr) hr.pose(Math.random() < 0.5 ? 'victory' : 'wave', 1.4); if (cr) cr.happy(1.6); }
+
+
+  // ---- Soft cartoon glow (bloom): bright magic, lights and particles shine gently ----
+  var bloom = (function () {
+    var on = true, rt = null, A = [], B = [], L = 3, W = 0, H = 0;
+    var cam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), scn = new T.Scene();
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+    g.setAttribute('uv', new T.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
+    var quad = new T.Mesh(g); quad.frustumCulled = false; scn.add(quad);
+    var vs = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+    var mk = function (u, fs, tm) { return new T.ShaderMaterial({ uniforms: u, vertexShader: vs, fragmentShader: fs, depthTest: false, depthWrite: false, toneMapped: !!tm }); };
+    var bright = mk({ t: { value: null }, th: { value: 1.25 }, kn: { value: 0.35 } },
+      'uniform sampler2D t; uniform float th, kn; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(t, vUv).rgb; float br = max(c.r, max(c.g, c.b));\nfloat s = clamp(br - th + kn, 0.0, 2.0 * kn); s = s * s / (4.0 * kn + 1e-4);\nfloat w = max(s, br - th) / max(br, 1e-4); gl_FragColor = vec4(min(c * w, vec3(6.0)), 1.0); }');
+    var blur = mk({ t: { value: null }, d: { value: new T.Vector2() } },
+      'uniform sampler2D t; uniform vec2 d; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(t, vUv).rgb * 0.227027;\nc += (texture2D(t, vUv + d * 1.3846).rgb + texture2D(t, vUv - d * 1.3846).rgb) * 0.3162162;\nc += (texture2D(t, vUv + d * 3.2308).rgb + texture2D(t, vUv - d * 3.2308).rgb) * 0.0702703;\ngl_FragColor = vec4(c, 1.0); }');
+    var comp = mk({ s: { value: null }, b0: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: 0.6 } },
+      'uniform sampler2D s, b0, b1, b2; uniform float k; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(s, vUv).rgb + k * (texture2D(b0, vUv).rgb * 0.45 + texture2D(b1, vUv).rgb * 0.7 + texture2D(b2, vUv).rgb * 0.9);\ngl_FragColor = vec4(c, 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}', true);
+    function mkRT(w, h, ms) { var r = new T.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), { type: T.HalfFloatType, depthBuffer: !!ms, samples: ms || 0 }); r.texture.generateMipmaps = false; return r; }
+    function size(w, h) {
+      if (w === W && h === H && rt) return; W = w; H = h;
+      [rt].concat(A, B).forEach(function (r) { if (r) r.dispose(); }); A = []; B = [];
+      rt = mkRT(w, h, 4);
+      for (var i = 0; i < L; i++) { var f = 1 << (i + 1); A.push(mkRT(w / f | 0, h / f | 0)); B.push(mkRT(w / f | 0, h / f | 0)); }
+    }
+    function pass(m, target) { quad.material = m; renderer.setRenderTarget(target); renderer.render(scn, cam); }
+    function render() {
+      var sz = renderer.getDrawingBufferSize(new T.Vector2()); size(sz.x, sz.y);
+      renderer.setRenderTarget(rt); renderer.render(scene, camera);
+      bright.uniforms.t.value = rt.texture; pass(bright, A[0]);
+      for (var i = 0; i < L; i++) {
+        var src = i === 0 ? A[0] : A[i - 1], w = A[i].width, h = A[i].height;
+        blur.uniforms.t.value = src.texture; blur.uniforms.d.value.set(1 / src.width, 0); pass(blur, B[i]);
+        blur.uniforms.t.value = B[i].texture; blur.uniforms.d.value.set(0, 1 / h); pass(blur, A[i]);
+      }
+      comp.uniforms.s.value = rt.texture; comp.uniforms.b0.value = A[0].texture; comp.uniforms.b1.value = A[1].texture; comp.uniforms.b2.value = A[2].texture;
+      pass(comp, null);
+    }
+    return { render: function () { try { render(); } catch (e) { on = false; renderer.setRenderTarget(null); renderer.render(scene, camera); } }, get on() { return on; }, set on(v) { on = v; }, k: comp.uniforms.k, th: bright.uniforms.th };
+  })();
   // Resize
+  var baseDist = 4.7, _lt = new V(), camFocus = null, _fp = new V(), _fs = new V(0.6, 0.8, 0.2), _fo = new V(), _fd = 2;
   function resize() {
     var w = stage.clientWidth, h = stage.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h;
     if (!w || !h) return;
-    var dist = opts.dist || Math.max(5.6, 5.3 / (w / h));
-    camera.position.set(0, 1.35, dist); camera.lookAt(camTarget);
+    baseDist = opts.dist || Math.max(4.7, 4.5 / (w / h));
+    camera.position.set(0, 1.35, baseDist); camera.lookAt(camTarget);
     camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize); resize();
@@ -6811,7 +7715,7 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   });
   el.addEventListener('pointerup', function () { dragging = false; if (!moved) doTap(); });
 
-  function doTap() { if (!act(Math.random() < 0.5 ? 'jump' : 'wave', 3.2)) jumpT = 0; if (opts.onTap) opts.onTap(); }
+  function doTap() { mentorTap(); if (!act(Math.random() < 0.5 ? 'jump' : 'wave', 3.2)) jumpT = 0; if (opts.onTap) opts.onTap(); }
 
   // Animate
   var clock = new T.Clock(), blinkNext = 2;
@@ -6834,8 +7738,11 @@ window.GLTFLoader=window.__GL.GLTFLoader;
 
     var floatY = Math.sin(time * 1.8) * 0.04 + 0.06;
     hero.position.y = floatY + jy;
-    hero.rotation.y = rotY + spin;
+    hero.rotation.y = rotY + spin - 0.45 * M_.cam;
     hero.scale.set(1 + (1 - squash) * 0.5, squash, 1 + (1 - squash) * 0.5);
+    var fdt = lastFxT ? Math.min(0.05, Math.max(0, time - lastFxT)) : 0.016; lastFxT = time;
+    hero.position.y += transLift; hero.rotation.y += transSpin;
+    if (tpT >= 0) { tpT += fdt; var tk = tpT < 0.15 ? 1 - tpT / 0.15 : tpT < 0.7 ? 0 : tpT < 1.0 ? Math.sin((tpT - 0.7) / 0.3 * Math.PI * 0.5) * (1 + Math.sin((tpT - 0.7) / 0.3 * Math.PI) * 0.3) : 1; hero.scale.multiplyScalar(Math.max(0.001, tk)); if (tpT >= 1.0) tpT = -1; }
     torso.scale.set(1 + Math.sin(time * 2) * 0.01, 1, 0.7 + Math.sin(time * 2) * 0.008);
     head.rotation.z = Math.sin(time * 0.9) * 0.04;
     head.rotation.x = Math.sin(time * 0.7) * 0.03 - 0.03;
@@ -6848,10 +7755,11 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     updateMane(time); updateLocks(time);
     updateCape(time);
     wings.forEach(function (w) { w.p.rotation.y = (Math.sin(time * 3) * 0.25 + 0.15) * w.s; });
-    aura.material.opacity = 0.06 + Math.sin(time * 2) * 0.03;
+    auraMat.uniforms.t.value = time; auraMat.uniforms.k.value = 0.8 + Math.sin(time * 2) * 0.2;
     updatePet(time, dt, jy);
+    updateMentor(time, fdt);
     if (mixer) {
-      var mdt = mixLastT ? Math.min(0.05, Math.max(0, time - mixLastT)) : 0.016; mixLastT = time;
+      var mdt = (mixLastT ? Math.min(0.05, Math.max(0, time - mixLastT)) : 0.016) * timeScale; mixLastT = time;
       if (curAct && time > actEnd) { curAct.fadeOut(0.3); curAct = null; if (idleAct) { idleAct.enabled = true; idleAct.setEffectiveTimeScale(1); idleAct.fadeIn(0.3); } }
       mixer.update(mdt);
     }
@@ -6875,11 +7783,28 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     glow.intensity = realOn ? 0.25 + energy * 1.2 : 2 + Math.sin(time * 2) * 0.5 + energy * 2;
     if (realOn && !lightsTuned) { lightsTuned = true; key.color.setHex(0xFFF6EE); rim2.intensity = 0.5; }
 
-    renderer.render(scene, camera);
+    updateSky(fdt); updateFx(fdt); updateParts(fdt); updateTransform(fdt);
+    for (var bi = bolts.length - 1; bi >= 0; bi--) { var bo = bolts[bi]; bo.t += fdt; bo.m.visible = bo.t < 0.15 || (bo.t > 0.2 && bo.t < 0.32) || (bo.t > 0.38 && bo.t < 0.5); if (bo.t > 0.52) { killMesh(bo.m); bolts.splice(bi, 1); } }
+    var sk = camShake > 0.002 ? camShake : 0; camShake *= 0.9;
+    if (camFocus) {
+      // close-up mode (used for previews): the camera follows the companion
+      pet.getWorldPosition(_fp); if (giant && giant.visible && camFocus.giant) { giant.getWorldPosition(_fp); _fp.y += 1.1 * giant.scale.x; }
+      _fs.lerp(_fp.y ? _fp.add(_fo.set(0, camFocus.dy || 0.35, 0)) : _fp, 0.12);
+      var fd = camFocus.dist * (giant && giant.visible && camFocus.giant ? 0.9 + giant.scale.x * 2.2 : 1);
+      _fd += (fd - _fd) * 0.1;
+      camera.position.set(_fs.x + _fd * 0.25 + (Math.random() - 0.5) * sk, _fs.y + 0.15 + (Math.random() - 0.5) * sk, _fs.z + _fd);
+      camera.lookAt(_fs);
+    } else {
+    var cxs = (camZoom - 1) * 0.9 * (1 - M_.cam) - 0.82 * M_.cam;
+    var vy = 1 - M_.cam * 0.75;
+    camera.position.set(cxs + (Math.random() - 0.5) * sk, 1.35 + (camZoom - 1) * 1.1 * vy + (Math.random() - 0.5) * sk, baseDist * camZoom);
+    _lt.copy(camTarget); _lt.y += (camZoom - 1) * 1.0 * vy + M_.cam * 0.12; _lt.x += cxs; camera.lookAt(_lt);
+    }
+    if (bloom.on) bloom.render(); else renderer.render(scene, camera);
     perfCheck();
     if (running) raf = requestAnimationFrame(frame);
   }
-  var running = false, raf = 0;
+  var running = false, raf = 0, lastFxT = 0;
   // Low-end phones: if frames are slow, lower the quality once
   var pf = { n: 0, t0: 0, done: false };
   function perfCheck() {
@@ -6891,11 +7816,12 @@ window.GLTFLoader=window.__GL.GLTFLoader;
       pf.done = true;
       var ms = (now - pf.t0) / pf.n;
       if (ms > 34) { renderer.setPixelRatio(1); renderer.shadowMap.enabled = false; key.castShadow = false; resize(); }
+      if (ms > 45) bloom.on = false;
     }
   }
   function start() { if (running) return; running = true; resize(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); }
-  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, breathe: breathe };
+  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, status: function () { return { hero: realCur ? realCur.userData.form : null, pet: cur ? cur.userData.form : null, want: curForm, giant: !!giant }; }, rotate: function (v) { rotY = v; }, focus: function (f) { camFocus = f; if (f) _fd = f.dist; }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, fly: goFly, breathe: breathe, power: function (n) { return power(n); }, transform: transform, busy: function () { return transT >= 0; }, mentor: mentorVisit, mentorLeave: mentorLeave, mentorActive: function () { return M_.t >= 0 ? M_.who : null; }, preload: function (n) { loadForm(n, function () {}); } };
 };
 </script>
 <script>(function () {
@@ -6987,9 +7913,9 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   var frVoice = null;
   function loadVoice() { if (!window.speechSynthesis) return; var v = speechSynthesis.getVoices(); frVoice = v.filter(function (x) { return /^fr/i.test(x.lang); }).sort(function (a, b) { return (/Google|Amélie|Thomas/.test(b.name) ? 1 : 0) - (/Google|Amélie|Thomas/.test(a.name) ? 1 : 0); })[0] || null; }
   if (window.speechSynthesis) { loadVoice(); speechSynthesis.onvoiceschanged = loadVoice; }
-  function speak(t) {
+  function speak(t, pitch) {
     if (!S.settings.voice || !window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t.replace(/·/g, ',')); u.lang = 'fr-FR'; if (frVoice) u.voice = frVoice; u.rate = 1; u.pitch = 1.15; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t.replace(/·/g, ',')); u.lang = 'fr-FR'; if (frVoice) u.voice = frVoice; u.rate = pitch ? 0.95 : 1; u.pitch = pitch || 1.15; speechSynthesis.speak(u); } catch (e) {}
   }
 
   // ---------- Hero ----------
@@ -7013,7 +7939,7 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     document.querySelectorAll('.screen').forEach(function (s) { s.classList.toggle('on', s.id === 's-' + name); });
     document.querySelectorAll('#nav button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-go') === name); });
     $('nav').style.display = name === 'locked' ? 'none' : '';
-    if (name === 'home') { renderHome(); if (hero) hero.start(); } else if (hero) hero.stop();
+    if (name === 'home') { renderHome(); if (hero) hero.start(); setTimeout(morningPoster, 700); setTimeout(maybeBroVisit, 9000); } else if (hero) hero.stop();
     if (name === 'missions') renderMissions();
     if (name === 'powers') renderPowers();
     if (name === 'pride') renderPride();
@@ -7055,7 +7981,7 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     }
     d.awarded[key] = 1; d.starsToday++; S.stars++; save();
     heroSay(bravo, bubbleEl);
-    if (hero && hero.act) hero.act('spell', 2.7);
+    if (hero && hero.power) { var lv = levelFor(S.stars); setTimeout(function () { if (hero.busy && hero.busy()) return; hero.power(Math.random() < 0.6 ? lv : 1 + Math.floor(Math.random() * lv)); }, 400); }
     checkLevelUp(); checkHatch();
   }
   function unaward(key) {
@@ -7141,7 +8067,62 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   }
 
   // ---------- Powers ----------
+
+  // ---- Adventure cards: the illustrated posters, unlocked level after level ----
+  var CARDS = [
+    { id: 'bro_thib', t: 'Thib, le Gardien', l: 1 },
+    { id: 'bro_val', t: 'Val, le Protecteur', l: 1 },
+    { id: 'oeuf', t: "L'œuf mystérieux", l: 1 },
+    { id: 'histoire_oeuf', t: 'Les grands frères veillent', l: 1 },
+    { id: 'niv1', t: 'Niveau 1 · Étincelle', l: 1 },
+    { id: 'histoire_entrainement', t: 'Premier entraînement', l: 2 },
+    { id: 'niv3', t: 'Niveau 3 · Cœur des eaux', l: 3 },
+    { id: 'histoire_bouclier', t: 'Le bouclier de cristal', l: 3 },
+    { id: 'niv4', t: 'Niveau 4 · Terre et feu', l: 4 },
+    { id: 'histoire_anneaux', t: 'Les anneaux de lumière', l: 4 },
+    { id: 'niv5', t: 'Niveau 5 · Maîtresse du temps', l: 5 },
+    { id: 'louna_poster', t: "L'héroïne et son dragon", l: 5 },
+    { id: 'histoire_finale', t: 'Les trois Gardiens', l: 5 },
+    { id: 'famille', t: 'La famille des Gardiens', l: 5 }
+  ];
+  var LEVEL_CARD = { 1: 'niv1', 2: 'histoire_entrainement', 3: 'niv3', 4: 'niv4', 5: 'niv5' };
+  function cardById(id) { return CARDS.filter(function (c) { return c.id === id; })[0]; }
+  function showPoster(id, extra) {
+    var c = cardById(id); if (!c) return;
+    openOv(function (p) {
+      p.innerHTML = '<img class="poster" src="img/' + c.id + '.jpg" alt="' + esc(c.t) + '"><p class="center h" style="font-size:22px;margin:6px 0 2px;color:#FFE08A">' + esc(c.t) + '</p>' + (extra || '') + '<button class="btn alt" data-close>Fermer</button>';
+    });
+  }
+  function renderAlbum() {
+    var box = $('album'); if (!box) return;
+    var l = levelFor(S.stars), seen = S.cardsSeen || [], got = CARDS.filter(function (c) { return c.l <= l; }).length;
+    $('albumCount').textContent = got + ' / ' + CARDS.length;
+    box.innerHTML = CARDS.map(function (c) {
+      var ok = c.l <= l, isNew = ok && seen.indexOf(c.id) < 0;
+      return '<button class="acard' + (ok ? '' : ' lock') + '" data-card="' + c.id + '" aria-label="' + (ok ? esc(c.t) : 'Carte verrouillée') + '">' +
+        (ok ? '<img src="img/' + c.id + '_m.jpg" alt="" loading="lazy">' : '<span class="al"><em>?</em>' + ic('lock', 20) + '<b>Niveau ' + c.l + '</b></span>') + (isNew ? '<i class="anew">Nouvelle !</i>' : '') + '</button>';
+    }).join('');
+    box.querySelectorAll('[data-card]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var c = cardById(b.getAttribute('data-card'));
+        if (c.l > levelFor(S.stars)) { speak('Cette carte se débloque au niveau ' + c.l + '. Continue tes missions !'); return; }
+        S.cardsSeen = (S.cardsSeen || []).concat([c.id]); save(); showPoster(c.id); renderAlbum();
+      });
+    });
+  }
+  function morningPoster() {
+    // once a day, the family poster greets her when the app opens
+    var k = new Date().toDateString();
+    if (S.posterDay === k || !S.setupDone || !S.letterDone || S.sync.role === 'grand' || $('ov').classList.contains('on')) return;
+    S.posterDay = k; save();
+    var lv = levelFor(S.stars), pool = CARDS.filter(function (c) { return c.l === lv; }).concat(lv < 5 ? [cardById('histoire_oeuf'), cardById('bro_thib'), cardById('bro_val')] : [cardById('famille'), cardById('famille')]);
+    var pc = pick(pool);
+    openOv(function (p) {
+      p.innerHTML = '<img class="poster" src="img/' + pc.id + '.jpg" alt="' + esc(pc.t) + '"><p class="center h" style="font-size:22px;margin:6px 0 2px;color:#FFE08A">Bonjour ' + esc(S.settings.childName || '') + ' !</p><p class="center sub">Tes grands frères et vos compagnons sont prêts. Une nouvelle journée d\'héroïne commence.</p><button class="btn" data-close>' + ic('star') + 'C\'est parti !</button>';
+    });
+  }
   function renderPowers() {
+    renderAlbum();
     var p = progress();
     $('powersSub').textContent = p.next ? 'Encore ' + p.left + ' étoile' + (p.left > 1 ? 's' : '') + ' pour : ' + p.next.name + '.' : 'Tu as tous les pouvoirs. Tu es une vraie héroïne.';
     $('tierList').innerHTML = TIERS.map(function (t, i) {
@@ -7155,15 +8136,27 @@ window.GLTFLoader=window.__GL.GLTFLoader;
     if (l > S.levelSeen) { S.levelSeen = l; unlockForLevel(l); save(); setTimeout(function () { celebrate(l); }, 900); }
   }
   function celebrate(l) {
+    // the transformation plays first, then the "new power" card
+    if (hero && hero.transform && !celebrating) {
+      celebrating = true; go('home');
+      hero.transform(l, function () { celebrating = false; showNewPower(l); });
+      speak('Oh ! Il se passe quelque chose…');
+      return;
+    }
+    if (hero) hero.setLevel(l);
+    showNewPower(l);
+  }
+  var celebrating = false;
+  function showNewPower(l) {
     var t = TIERS[l - 1];
     confetti();
-    if (hero) { hero.setLevel(l); hero.jump(); }
     openOv(function (p) {
       var m = S.messages.filter(function (x) { return x.level === l; });
-      p.innerHTML = '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p><p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + t.desc + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<button class="btn alt" data-close>Super !</button>';
+      var lc = LEVEL_CARD[l]; if (lc) S.cardsSeen = (S.cardsSeen || []).concat([lc]);
+      p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + t.desc + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
       speak('Nouveau pouvoir ! ' + t.name + '. ' + (l === 5 ? "Tu es une vraie héroïne." : "Grâce à toi, je suis encore plus forte."));
       if (m.length) p.querySelector('#celMsg').addEventListener('click', function () { playMsg(m[0]); });
-    });
+    }, function () { setTimeout(function () { callBrother(l % 2 ? 'val' : 'thib', { cheer: true }); }, l === 5 ? 7000 : 600); });
     if (l === 5 && hero) setTimeout(function () { hero.giant(); }, 2500);
   }
   function confetti() {
@@ -7213,7 +8206,10 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   function playMsg(m) {
     try { speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
     if (audio) audio.pause();
+    var first = !m.heard, bw = /thib/i.test(m.from || '') ? 'thib' : /val/i.test(m.from || '') ? 'val' : null;
     audio = new Audio(m.audio); audio.play().catch(function () {});
+    // after a brother's first message, his hero comes to say hello in 3D
+    if (first && bw) audio.addEventListener('ended', function () { if (!$('ov').classList.contains('on')) setTimeout(function () { callBrother(bw); }, 600); });
     m.heard = true; pushMsg(m); save(); $('msgDot').style.display = newMessages().length ? '' : 'none';
     if (current === 'team') setTimeout(renderMsgs, 100);
   }
@@ -7400,7 +8396,7 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   function hatchNow() {
     if (S.pet) { hatching = false; return; }
     openOv(function (p) {
-      p.innerHTML = '<p class="center" style="margin:0">' + PET_SVG.replace('<svg', '<svg width="96" height="96"') + '</p><p class="big h">Ton œuf a éclos !</p><p class="center sub">Une petite boule de poils est née. Elle va grandir avec toi, à chaque pouvoir.</p><label>Comment veux-tu l\'appeler ?<input type="text" id="hatchName" maxlength="16" placeholder="Son nom"></label><button class="btn" id="hatchOk">' + ic('star') + 'C\'est son nom !</button>';
+      p.innerHTML = '<img class="poster" src="img/oeuf.jpg" alt="" style="max-height:38vh;object-fit:cover"><p class="big h">Ton œuf a éclos !</p><p class="center sub">Une petite boule de poils est née. Elle va grandir avec toi, à chaque pouvoir.</p><label>Comment veux-tu l\'appeler ?<input type="text" id="hatchName" maxlength="16" placeholder="Son nom"></label><button class="btn" id="hatchOk">' + ic('star') + 'C\'est son nom !</button>';
       p.querySelector('#hatchOk').addEventListener('click', function () {
         var n = p.querySelector('#hatchName').value.trim(); if (!n) { p.querySelector('#hatchName').focus(); return; }
         S.pet = { type: 'creature', name: n, since: today() }; save(); hatching = false; closeOv();
@@ -7422,10 +8418,59 @@ window.GLTFLoader=window.__GL.GLTFLoader;
       box.innerHTML = '<div class="ally"><div class="ph" style="background:#1E1760">' + PET_SVG + '</div><div class="t"><b>' + esc(S.pet.name) + '</b><span>' + PET_STAGES[l - 1] + ' · forme ' + l + ' sur 5. Il change à chaque pouvoir.</span></div></div>';
     }
   }
+
+  // ---- The big brothers' 3D heroes (Thib + Alor, Val + his lion) come to visit ----
+  var BRO = {
+    thib: { name: 'Thib', title: 'Gardien des Horizons', mount: 'Alor, le Loup Céleste', img: 'models/thib_face.jpg' },
+    val: { name: 'Val', title: 'Gardien d\'Émeraude', mount: 'son lion royal', img: 'models/val_face.jpg' }
+  };
+  function broLines(who) {
+    var n = S.settings.childName || 'petite sœur', h = S.settings.heroName || 'ton héroïne';
+    if (who === 'thib') return {
+      a: ['Salut ' + n + ' ! Alor et moi, on veille sur toi depuis les étoiles.', 'Coucou ' + n + ' ! J\'ai senti ton courage depuis l\'autre bout du ciel, alors je suis venu !', 'Hey ' + n + ' ! Alor voulait absolument voir comment ' + h + ' devient forte.'],
+      b: ['Moi aussi, j\'ai dû m\'entraîner pour devenir fort. Chaque essai compte, même les ratés !', 'Une vraie héroïne, ce n\'est pas celle qui n\'a jamais peur : c\'est celle qui essaie quand même.', 'Chaque étoile que tu gagnes, c\'est un pas de géant. Je suis fier de toi !', 'Alor dit que ton courage brille plus fort que la lune !'],
+      c: ['Bravo ' + n + ' ! Tu deviens aussi forte que nous. Je suis super fier de toi !', 'Waouh ! Ce nouveau pouvoir, tu l\'as gagné toute seule. Alor hurle de joie !'],
+      bye: ['À bientôt ' + n + ' ! On repasse vite.', 'Allez, on file ! Continue comme ça, championne.']
+    };
+    return {
+      a: ['Bonjour ' + n + '. Mon lion et moi, on est venus voir comment tu grandis.', 'Coucou ' + n + ' ! Le lion royal m\'a dit que tu faisais de grandes choses.', 'Salut ' + n + '. Je passais te dire que je crois très fort en toi.'],
+      b: ['Prends ton temps et respire : la force tranquille, c\'est aussi un super-pouvoir.', 'Un vrai gardien protège les autres. Et toi, tu as déjà un cœur de gardienne.', 'Même les plus grands héros se reposent. L\'important, c\'est de ne jamais abandonner.', 'Une mission à la fois. C\'est comme ça qu\'on devient très fort.'],
+      c: ['Bravo ' + n + ' ! Ce pouvoir, tu l\'as mérité. Mon lion rugit de fierté !', 'Je suis très fier de toi, petite sœur. Tu deviens une vraie gardienne.'],
+      bye: ['À très vite ' + n + '. On garde un œil sur toi.', 'On repart en mission. Continue, tu es sur le bon chemin.']
+    };
+  }
+  function broSay(who, t) { var el = $('bubble'); el.innerHTML = '<img src="' + BRO[who].img + '" alt="" style="width:34px;height:34px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;border:2px solid ' + (who === 'val' ? '#3DDB8A' : '#6FA8FF') + '"><b style="color:' + (who === 'val' ? '#1E9E5A' : '#2B5FD9') + '">' + esc(BRO[who].name) + '</b> · ' + esc(nb(t)); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); speak(t, who === 'val' ? 0.7 : 0.8); }
+  var broBusy = false;
+  function callBrother(who, o) {
+    o = o || {};
+    if (!hero || !hero.mentor || broBusy) return;
+    broBusy = true; go('home');
+    var L = broLines(who), a = o.cheer ? pick(L.c) : pick(L.a), b = pick(L.b), bye = pick(L.bye);
+    setTimeout(function () {
+      hero.mentor(who, { dur: o.cheer ? 9.5 : 11.5, cheer: !!o.cheer, say: function (i) { broSay(who, i === 0 ? a : i === 1 ? b : bye); }, done: function () { broBusy = false; } });
+      setTimeout(function () { broBusy = false; }, 20000);
+    }, 350);
+  }
+  function renderBros() {
+    var box = $('heroBros'); if (!box) return;
+    box.innerHTML = ['thib', 'val'].map(function (k) { var b = BRO[k];
+      return '<div class="ally"><img src="' + b.img + '" alt="' + esc(b.name) + '" onerror="this.style.visibility=\'hidden\'"><div class="t" style="flex:1;min-width:0"><b>' + esc(b.name) + '</b><span>' + esc(b.title) + '<br>avec ' + esc(b.mount) + '</span></div><button class="btn alt" style="width:auto;padding:8px 12px;margin:0;font-size:.92em;flex:none" data-bro="' + k + '">' + ic('play', 18) + 'Appeler</button></div>'; }).join('');
+    box.querySelectorAll('[data-bro]').forEach(function (bt) { bt.addEventListener('click', function (e) { e.stopPropagation(); callBrother(bt.getAttribute('data-bro')); }); });
+    box.querySelectorAll('.ally').forEach(function (a, i) { a.style.cursor = 'pointer'; a.addEventListener('click', function () { var k = i ? 'val' : 'thib'; showPoster('bro_' + k, '<p class="center sub">' + esc(BRO[k].title) + ' · avec ' + esc(BRO[k].mount) + '</p>'); }); });
+  }
+  window.__callBro = function (w, o) { callBrother(w, o); };
+  function maybeBroVisit() {
+    // once a day, one of the brothers drops by on the home screen
+    var k = new Date().toDateString();
+    if (S.broVisit === k || !hero || !hero.mentor || celebrating || $('ov').classList.contains('on')) return;
+    S.broVisit = k; save();
+    callBrother(Math.random() < 0.5 ? 'thib' : 'val');
+  }
   function renderTeam() {
+    renderBros();
     renderTeamPet();
     var al = $('allyList');
-    if (!S.allies.length) al.innerHTML = '<p class="empty" style="padding:10px">Tes grands frères arrivent bientôt dans ton équipe…</p>';
+    if (!S.allies.length) al.innerHTML = '';
     else al.innerHTML = S.allies.map(function (a) { return '<div class="ally">' + (a.img ? '<img src="' + a.img + '" alt="Dessin de ' + esc(a.name) + '">' : '<div class="ph h">' + esc(a.name.charAt(0).toUpperCase()) + '</div>') + '<div class="t"><b>' + esc(a.name) + '</b><span>' + (a.power ? 'Pouvoir : ' + esc(a.power) : 'Ton allié') + '</span></div></div>'; }).join('');
     renderMsgs();
   }
@@ -7780,12 +8825,15 @@ window.GLTFLoader=window.__GL.GLTFLoader;
   // ---------- Boot ----------
   paintIcons();
   var tapN = 0;
-  try { hero = window.HeroScene($('stage'), { level: levelFor(S.stars), pet: S.pet, onTap: function () { tapN++; hero.petTap(); if (levelFor(S.stars) >= 5 && tapN % 4 === 0) { hero.giant(); heroSay((S.pet ? S.pet.name : 'Ton dragon') + ' devient immense pour te protéger !'); } else heroSay(pick(TAP_LINES)); } }); } catch (e) { $('stage').innerHTML = '<p class="empty">La 3D n\'est pas disponible sur cet appareil.</p>'; }
+  try { hero = window.HeroScene($('stage'), { level: levelFor(S.stars), pet: S.pet, onTap: function () { tapN++; hero.petTap(); if (hero.mentorActive && hero.mentorActive()) return; if (levelFor(S.stars) >= 5 && tapN % 4 === 0) { hero.giant(); heroSay((S.pet ? S.pet.name : 'Ton dragon') + ' devient immense pour te protéger !'); } else heroSay(pick(TAP_LINES)); } }); } catch (e) { $('stage').innerHTML = '<p class="empty">La 3D n\'est pas disponible sur cet appareil.</p>'; }
+  window.__hero = hero;
   refreshUnlocks();
   go(isLocked() ? 'locked' : 'home');
   if (!isLocked()) setTimeout(checkHatch, 2500);
   $('bubble').textContent = nb(greeting());
   setTimeout(function () { if (hero && hero.act) hero.act('wave', 4); }, 3000);
+  // the brothers' heroes load quietly in the background, so their visits start right away
+  setTimeout(function () { if (hero && hero.preload) ['thib', 'loup', 'val', 'lion'].forEach(function (n) { hero.preload(n); }); }, 15000);
   startSync();
   if (!S.setupDone) setup(); else if (!S.letterDone) ready(); else if (S.sync.role === 'grand') setTimeout(openAdult, 400);
 })();
