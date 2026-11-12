@@ -1,5 +1,5 @@
 // Mon héroïne — fonctionne aussi sans réseau (la synchro reprend au retour d'internet)
-var CACHE = 'monheroine-v1';
+var CACHE = 'monheroine-v4';
 var FILES = ['./', './index.html', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); })); self.skipWaiting(); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (k) { return Promise.all(k.filter(function (x) { return x !== CACHE; }).map(function (x) { return caches.delete(x); })); })); self.clients.claim(); });
