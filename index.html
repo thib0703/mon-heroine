@@ -6663,6 +6663,68 @@ window.CREATURES.lion = { eyes: { L: 0.468, R: 0.614, y: 0.79, rx: 0.035, ry: 0.
   legs: { L: [0.12, 0.45], R: [0.55, 0.9], top: 0.22, z: 0.68, hind: [0.27, 0.48], lift: 0.06 },
   tail: { z: 0.27, top: 0.68, px: 0.5, len: 0.27 }, tailUp: 0.3 };
 
+
+// Procedural walk for a skinned quadruped without clips (Meshy "smart rig" wolf): diagonal-pair gait,
+// knees that fold during the swing, back/head bob, tail sway; and idle life when standing.
+window.addQuadWalk = function (root, cfg) {
+  var T = THREE, bones = {};
+  root.traverse(function (o) { if (o.isBone) bones[o.name] = o; });
+  if (!bones[cfg.legs[0][0]]) return null;
+  root.updateMatrixWorld(true);
+  var up = new T.Vector3(0, 1, 0), fwd = new T.Vector3(), a = new T.Vector3(), b = new T.Vector3();
+  bones[cfg.hips].getWorldPosition(a); bones[cfg.chest].getWorldPosition(b);
+  fwd.subVectors(b, a); fwd.y = 0; fwd.normalize();
+  var side = new T.Vector3().crossVectors(up, fwd).normalize();
+  function prep(name) {
+    var bn = bones[name]; if (!bn) return null;
+    var wq = new T.Quaternion(); bn.getWorldQuaternion(wq);
+    var rq = new T.Quaternion(); root.getWorldQuaternion(rq);
+    var lq = rq.clone().invert().multiply(wq).invert(); // bone frame relative to the model root
+    return { b: bn, rest: bn.quaternion.clone(), side: side.clone().applyQuaternion(lq).normalize(), up: up.clone().applyQuaternion(lq).normalize(), fwd: fwd.clone().applyQuaternion(lq).normalize() };
+  }
+  var legs = cfg.legs.map(function (L, i) { return { j: L.map(prep), ph: cfg.phase[i], front: i < 2 }; });
+  var tail = (cfg.tail || []).map(prep).filter(Boolean), neck = (cfg.neck || []).map(prep).filter(Boolean), spine = (cfg.spine || []).map(prep).filter(Boolean);
+  var hips = prep(cfg.hips), hipRest = hips.b.position.clone();
+  var q = new T.Quaternion(), q2 = new T.Quaternion();
+  function rot(j, axis, ang, axis2, ang2) { if (!j) return; q.setFromAxisAngle(j[axis], ang); if (axis2) { q2.setFromAxisAngle(j[axis2], ang2); q.multiply(q2); } j.b.quaternion.copy(j.rest).multiply(q); }
+  var S = { t: 0, ph: 0, w: 0, look: 0, lookT: 0, lookNext: 1.5, wag: 0, wagT: 0, pitch: 0, pitchT: 0, hold: 0 };
+  return {
+    // speed 0..1 (0 = standing), dt in seconds
+    update: function (dt, speed) {
+      S.t += dt; S.w += ((speed > 0.02 ? 1 : 0) - S.w) * Math.min(1, dt * 4);
+      S.ph += dt * (0.9 + speed * 1.0) * Math.PI * 2 * (speed > 0.02 ? 1 : 0.0);
+      var w = S.w, A = cfg.swing || 0.42, t = S.t;
+      legs.forEach(function (L) {
+        var p = S.ph + L.ph * Math.PI * 2, sw = Math.sin(p), lift = Math.max(0, Math.cos(p)); // cos>0: swing (foot in the air)
+        rot(L.j[0], 'side', -A * sw * w);
+        rot(L.j[1], 'side', (L.front ? 0.55 : -0.5) * lift * w);
+        rot(L.j[2], 'side', (L.front ? -0.35 : 0.45) * lift * w);
+      });
+      root.userData.bob = bob;
+      // body: double-frequency bob + a little roll; idle: slow breathing
+      var bob = Math.abs(Math.sin(S.ph)) * 0.035 * w, breath = Math.sin(t * 2.2) * (1 - w);
+      rot(hips, 'fwd', Math.sin(S.ph) * 0.04 * w);
+      spine.forEach(function (sp, i) { rot(sp, 'side', breath * 0.012 + Math.sin(S.ph * 2) * 0.02 * w * (i % 2 ? -1 : 1)); });
+      // head: looks around when standing, counter-bobs when walking
+      if (t > S.lookNext && w < 0.5) { S.lookT = Math.random() < 0.35 ? 0 : (Math.random() * 2 - 1) * 0.5; S.pitchT = (Math.random() * 2 - 1) * 0.15; S.lookNext = t + 1.5 + Math.random() * 3; }
+      if (S.hold > 0) S.hold -= dt;
+      S.look += (S.lookT * (1 - w) - S.look) * Math.min(1, dt * 3); S.pitch += (S.pitchT - S.pitch) * Math.min(1, dt * 3);
+      neck.forEach(function (n, i) { rot(n, 'up', S.look / neck.length, 'side', (S.pitch - Math.sin(S.ph * 2) * 0.05 * w) / neck.length); });
+      // tail: sways with the gait, wags when happy
+      if (S.wagT > 0) S.wagT -= dt;
+      var wagA = (S.wagT > 0 ? 0.16 : 0.035), wf = S.wagT > 0 ? 9 : 2.2;
+      tail.forEach(function (tb, i) { var k = (i + 1) / tail.length; rot(tb, 'up', Math.sin(t * wf - i * 0.55) * wagA * k + Math.sin(S.ph) * 0.04 * w * k, 'side', (S.wagT > 0 ? -0.05 : 0.01) * k); });
+    },
+    happy: function (d) { S.wagT = d || 1.5; },
+    look: function (yaw, pitch, roll, hold) { S.lookT = yaw; S.pitchT = pitch; S.lookNext = S.t + (hold || 1.5); }
+  };
+};
+window.QUADWALK = {
+  loup_walk: { hips: 'Bone_001', chest: 'Bone_002', spine: ['Bone_003', 'Bone_002'], neck: ['Bone_025', 'Bone_024'],
+    // front-right, front-left, hind-right, hind-left (each: upper, middle, lower)
+    legs: [['Bone_029', 'Bone_028', 'Bone_027'], ['Bone_034', 'Bone_033', 'Bone_032'], ['Bone_008', 'Bone_007', 'Bone_006'], ['Bone_014', 'Bone_013', 'Bone_012']],
+    phase: [0, 0.5, 0.5, 0], tail: ['Bone_021', 'Bone_020', 'Bone_019', 'Bone_018', 'Bone_017'], swing: 0.55 }
+};
 </script>
 <script>window.HeroScene = function (stage, opts) {
   opts = opts || {};
@@ -7505,7 +7567,10 @@ window.CREATURES.lion = { eyes: { L: 0.468, R: 0.614, y: 0.79, rx: 0.035, ry: 0.
     tryForm(cfg.mount + '_walk', function (h) {
       if (M_.who !== who) return;
       var use = function (h2, walk) { if (M_.who !== who) return; M_.mountWait = false; M_.mount = h2; h2.visible = false; mentorRoot.add(h2); h2.position.copy(MP.mount);
-        if (walk && h2.userData.clips.length) { var mx = new T.AnimationMixer(h2.children[0]); var a = mx.clipAction(h2.userData.clips[0]); a.play(); M_.walk = { mx: mx, a: a, w: 1 }; M_.off = 0; if (M_.duo) { mentorRoot.remove(M_.duo); M_.duo = null; } } };
+        var qcfg = window.QUADWALK && window.QUADWALK[cfg.mount + '_walk'];
+        if (walk && h2.userData.clips.length) { var mx = new T.AnimationMixer(h2.children[0]); var a = mx.clipAction(h2.userData.clips[0]); a.play(); M_.walk = { mx: mx, a: a, w: 1 }; }
+        else if (walk && qcfg && window.addQuadWalk) { if (!h2.userData.quad) h2.userData.quad = window.addQuadWalk(h2.children[0], qcfg); if (h2.userData.quad) M_.walk = { quad: h2.userData.quad, w: 1 }; }
+        if (M_.walk) { M_.off = 0; if (M_.duo) { mentorRoot.remove(M_.duo); M_.duo = null; } } };
       if (h) use(h, true); else loadForm(cfg.mount, function (h2) { use(h2, false); });
     });
     return true;
@@ -7600,8 +7665,8 @@ window.CREATURES.lion = { eyes: { L: 0.468, R: 0.614, y: 0.79, rx: 0.035, ry: 0.
       Mo.rotation.y = face + (rest - face) * (turnK * turnK * (3 - 2 * turnK));
       var spd = wk < 1 ? (1 - wk) * 2.2 + 0.25 : 0; // stride speed follows the ground speed
       WK.w += ((wk < 1 ? 1 : 0) - WK.w) * Math.min(1, dt * 3);
-      WK.a.setEffectiveWeight(WK.w); WK.a.setEffectiveTimeScale(Math.max(0.35, spd) * 1.25);
-      WK.mx.update(dt);
+      if (WK.mx) { WK.a.setEffectiveWeight(WK.w); WK.a.setEffectiveTimeScale(Math.max(0.35, spd) * 1.25); WK.mx.update(dt); }
+      else if (WK.quad) { WK.quad.update(dt, wk < 1 ? Math.min(1, spd) : 0); if (t > 2.7 && !M_.said.qwag) { M_.said.qwag = 1; WK.quad.happy(2); } }
       if (wk < 1 && Math.random() < 0.5) emit({ pos: mentorRoot.localToWorld(new V(mxp - 0.3, 0.04, MP.mount.z + rnd(-0.2, 0.2))), vel: new V(rnd(-0.4, -0.1), rnd(0.15, 0.4), rnd(-0.1, 0.1)), life: 0.7, s0: 0.06, s1: 0.015, cols: [cfg.col2, 0xFFFFFF] });
       ms = Math.min(ms, wt < 0.05 ? 0.001 : 1); if (lt >= 0) ms = Math.min(ms, ps);
     } else {
@@ -7649,7 +7714,7 @@ window.CREATURES.lion = { eyes: { L: 0.468, R: 0.614, y: 0.79, rx: 0.035, ry: 0.
       if (t > 0.95 && t < 2.2) emit({ pos: new V(0, 0, 0), orbit: { a: rnd(0, 6.3), w: 1.4, r: rnd(0.55, 0.75), y: rnd(0.1, 0.4), vy: rnd(0.4, 0.9) }, life: 1.4, s0: 0.08, s1: 0.03, cols: [0x7CFFB0, 0xFFC23D] });
     } });
   }
-  function mentorTap() { if (M_.t < 0 || M_.leaveAt >= 0 || !M_.person) return; M_.react = 0; var hr = M_.person.userData.hrig, cr = M_.mount && M_.mount.userData.rig; if (hr) hr.pose(Math.random() < 0.5 ? 'victory' : 'wave', 1.4); if (cr) cr.happy(1.6); }
+  function mentorTap() { if (M_.t < 0 || M_.leaveAt >= 0 || !M_.person) return; M_.react = 0; if (M_.walk && M_.walk.quad) M_.walk.quad.happy(1.8); var hr = M_.person.userData.hrig, cr = M_.mount && M_.mount.userData.rig; if (hr) hr.pose(Math.random() < 0.5 ? 'victory' : 'wave', 1.4); if (cr) cr.happy(1.6); }
 
 
   // ---- Soft cartoon glow (bloom): bright magic, lights and particles shine gently ----
