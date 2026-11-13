@@ -7944,7 +7944,8 @@ window.QUADWALK = {
     'Effort': ["Essayer, c'est déjà gagner. Je suis fière de toi !", "Ce qui compte, c'est d'avoir essayé. Et tu l'as fait !", "Ton effort me donne plein d'énergie !"],
     'other': ["Bravo, coéquipière !", "Une étoile de plus pour l'équipe !", "Je savais que tu pouvais le faire."]
   };
-  var KEY = 'monheroine.v1';
+  var DEMO = /[?&#]demo\b/i.test(location.search + location.hash);
+  var KEY = DEMO ? 'monheroine.demo' : 'monheroine.v1';
   function today(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function fresh() {
     return {
@@ -7956,6 +7957,10 @@ window.QUADWALK = {
   }
   var S;
   try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { S = fresh(); }
+  if (DEMO && !S.setupDone) { // demo: ready to play, no limits, never synced with the family
+    S.setupDone = true; S.letterDone = true;
+    S.settings = { childName: 'Louna', heroName: 'Nova', code: '0000', minutesPerDay: 0, pace: 'normal', maxStars: 999, voice: true };
+  }
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
@@ -8281,7 +8286,7 @@ window.QUADWALK = {
 
   // ---------- Time limit ----------
   var adultOpen = false;
-  function isLocked() { return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= S.settings.minutesPerDay * 60; }
+  function isLocked() { if (DEMO && S.demoLock) return true; return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= S.settings.minutesPerDay * 60; }
   setInterval(function () {
     if (document.hidden || adultOpen || !S.setupDone || !S.letterDone || S.sync.role === 'grand') return;
     var d = day(); d.seconds++;
@@ -8305,7 +8310,7 @@ window.QUADWALK = {
     if (ovClose) ovClose(); ovClose = null;
     try { speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
     adultOpen = false;
-    if (current === 'home' || current === 'locked') go(isLocked() ? 'locked' : current);
+    if (current === 'home' || current === 'locked') go(isLocked() ? 'locked' : 'home');
     else go(current);
   }
   function toastErr(t) { var b = $('bubble'); if (b) b.textContent = t; }
@@ -8356,6 +8361,7 @@ window.QUADWALK = {
     return '<p class="sect" style="margin-top:0">Matins réussis (jours d\'école)</p><div class="stat">' + ws.map(function (w) { return '<div><span>' + w.c + '/' + w.total + '</span><i style="height:' + (w.total ? Math.max(4, w.c / w.total * 80) : 4) + 'px"></i><span>' + w.label + '</span></div>'; }).join('') + '</div><p class="hint">Total : ' + S.stars + ' étoiles · niveau ' + levelFor(S.stars) + ' · aujourd\'hui ' + Math.round(day().seconds / 60) + ' min de jeu</p>';
   }
   function openAdult() {
+    if (DEMO && S.demoLock) { S.demoLock = false; save(); }
     adultOpen = true;
     var st = S.settings;
     openOv(function (p) {
@@ -8751,6 +8757,7 @@ window.QUADWALK = {
     (function next(i) { if (i >= list.length) return cb(); var sc = document.createElement('script'); sc.src = base + list[i]; sc.onload = function () { next(i + 1); }; sc.onerror = function () { syncState = 'error'; }; document.head.appendChild(sc); })(0);
   }
   function startSync() {
+    if (DEMO) return;
     if (!S.sync.family || !window.FIREBASE_CONFIG) return;
     syncState = 'connecting';
     loadFirebase(function () {
@@ -8888,13 +8895,53 @@ window.QUADWALK = {
   }
 
   // ---------- Boot ----------
+
+  // ---------- Demo mode (link …/?demo): test every stage in one go ----------
+  function demoPanel() {
+    var lv = levelFor(S.stars), nx = lv < 5 ? TIERS[lv] : null;
+    openOv(function (p) {
+      var b = function (id, label, cls) { return '<button class="btn ' + (cls || 'alt') + '" id="' + id + '" style="margin:0">' + label + '</button>'; };
+      p.innerHTML = '<p class="big h">Mode démo</p><p class="sub center">Niveau ' + lv + ' · ' + S.stars + ' étoiles' + (S.pet ? ' · ' + esc(S.pet.name) : ' · œuf pas encore éclos') + '</p>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+        (S.pet ? '' : b('dHatch', ic('star') + 'Faire éclore l\'œuf', '')) +
+        (nx ? b('dNext', ic('star') + 'Passer au niveau ' + nx.n + ' · ' + nx.name, '') : '') +
+        b('dStar', '+1 étoile (petit pouvoir)') +
+        '<p class="sect" style="margin:6px 0 0">Pouvoirs débloqués</p><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        TIERS.slice(0, lv).map(function (t) { return '<button class="btn alt" data-pw="' + t.n + '" style="margin:0;width:auto;flex:1;min-width:48px;padding:10px">' + t.n + '</button>'; }).join('') + '</div>' +
+        '<p class="sect" style="margin:6px 0 0">Visites et scènes</p>' +
+        b('dThib', 'Visite de Thib et Alor') + b('dVal', 'Visite de Val et son lion') +
+        (lv >= 5 ? b('dGiant', 'Le dragon devient immense') : '') +
+        b('dPoster', 'Poster du matin') + b('dLock', 'Écran « fin du temps de jeu »') +
+        '<p class="hint center" style="margin:6px 0 0">Code de l\'espace des grands en démo : 0000</p>' +
+        b('dReset', 'Recommencer la démo depuis le début', 'ghost') + b('dClose', 'Fermer', 'ghost') + '</div>';
+      var on = function (id, fn) { var e = p.querySelector('#' + id); if (e) e.addEventListener('click', fn); };
+      on('dClose', closeOv);
+      on('dHatch', function () { closeOv(); if (S.stars < 1) S.stars = 1; save(); go('home'); setTimeout(hatchNow, 400); });
+      on('dNext', function () { closeOv(); go('home'); S.stars = Math.max(S.stars, tierAt(lv)); if (!S.pet) S.pet = { type: 'creature', name: 'Pixel', since: today() }, hero && hero.setPet(S.pet); save(); setTimeout(checkLevelUp, 300); });
+      on('dStar', function () { closeOv(); go('home'); S.stars++; save(); if (hero && hero.power && !(hero.busy && hero.busy())) hero.power(lv); heroSay(pick(BRAVO.other)); setTimeout(function () { checkLevelUp(); checkHatch(); }, 300); });
+      p.querySelectorAll('[data-pw]').forEach(function (e) { e.addEventListener('click', function () { closeOv(); go('home'); setTimeout(function () { if (hero && hero.power) hero.power(+e.getAttribute('data-pw')); }, 300); }); });
+      on('dThib', function () { closeOv(); setTimeout(function () { callBrother('thib'); }, 200); });
+      on('dVal', function () { closeOv(); setTimeout(function () { callBrother('val'); }, 200); });
+      on('dGiant', function () { closeOv(); go('home'); setTimeout(function () { if (hero) hero.giant(); }, 300); });
+      on('dPoster', function () { closeOv(); S.posterDay = ''; save(); go('home'); setTimeout(morningPoster, 300); });
+      on('dLock', function () { closeOv(); S.demoLock = true; save(); go('locked'); heroSay('Pour débloquer : bouton « Espace des grands », code 0000.'); });
+      on('dReset', function () { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+    });
+  }
+  if (DEMO) {
+    var db_ = document.createElement('button');
+    db_.textContent = 'DÉMO'; db_.setAttribute('aria-label', 'Ouvrir le panneau de démo');
+    db_.style.cssText = 'position:fixed;right:12px;bottom:92px;z-index:15;background:#FFC23D;color:#1B1650;border:0;border-radius:999px;padding:10px 16px;font:800 14px system-ui;box-shadow:0 6px 18px rgba(0,0,0,.45)';
+    db_.addEventListener('click', demoPanel); document.body.appendChild(db_);
+  }
   paintIcons();
   var tapN = 0;
   try { hero = window.HeroScene($('stage'), { level: levelFor(S.stars), pet: S.pet, onTap: function () { tapN++; hero.petTap(); if (hero.mentorActive && hero.mentorActive()) return; if (levelFor(S.stars) >= 5 && tapN % 4 === 0) { hero.giant(); heroSay((S.pet ? S.pet.name : 'Ton dragon') + ' devient immense pour te protéger !'); } else heroSay(pick(TAP_LINES)); } }); } catch (e) { $('stage').innerHTML = '<p class="empty">La 3D n\'est pas disponible sur cet appareil.</p>'; }
   window.__hero = hero;
   refreshUnlocks();
   go(isLocked() ? 'locked' : 'home');
-  if (!isLocked()) setTimeout(checkHatch, 2500);
+  if (!isLocked() && !DEMO) setTimeout(checkHatch, 2500);
+  if (DEMO) setTimeout(function () { heroSay('Mode démo : appuie sur le bouton jaune DÉMO pour tout essayer.'); }, 1500);
   $('bubble').textContent = nb(greeting());
   setTimeout(function () { if (hero && hero.act) hero.act('wave', 4); }, 3000);
   // the brothers' heroes load quietly in the background, so their visits start right away
