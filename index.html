@@ -8009,7 +8009,7 @@ window.QUADWALK = {
   function fresh() {
     return {
       v: 1, setupDone: false, letterDone: false,
-      settings: { childName: '', heroName: 'Nova', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: true, nightOn: true, nightLabel: '' },
+      settings: { childName: '', heroName: '', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: false, nightOn: true, nightLabel: '' },
       stars: 0, days: {}, missions: DEFAULT_MISSIONS.slice(), pride: [], messages: [], levelSeen: 1, firstDay: today(),
       pet: null, allies: [], qualities: [], flags: [], riddles: {},
       rewards: {}, rewardsGiven: {}, surprise: null, surpriseSeen: '', smallRewards: null, smallGot: {}, smallGiven: {}
@@ -8019,12 +8019,14 @@ window.QUADWALK = {
   try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { S = fresh(); }
   if (DEMO && !S.setupDone) { // demo: ready to play, no limits, never synced with the family
     S.setupDone = true; S.letterDone = false;
-    S.settings = { childName: 'Louna', heroName: 'Nova', code: '0000', minutesPerDay: 0, pace: 'normal', maxStars: 999, voice: true };
+    S.settings = { childName: 'Louna', heroName: '', code: '0000', minutesPerDay: 0, pace: 'normal', maxStars: 999, voice: false };
   }
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
   if (S.settings.nightOn === undefined) S.settings.nightOn = true;
+  // plus de nom par défaut : c'est elle qui choisit le nom de son héroïne
+  if (!S.heroNamed && S.settings.heroName === 'Nova') S.settings.heroName = '';
   if (!S.smallRewards) S.smallRewards = [
     { id: 'sr1', kind: 'night', n: 1, text: 'Un autocollant de super-héroïne' },
     { id: 'sr2', kind: 'night', n: 5, text: 'Tu choisis le dessert ou le film du soir' },
@@ -8053,6 +8055,7 @@ window.QUADWALK = {
   function loadVoice() { if (!window.speechSynthesis) return; var v = speechSynthesis.getVoices(); frVoice = v.filter(function (x) { return /^fr/i.test(x.lang); }).sort(function (a, b) { return (/Google|Amélie|Thomas/.test(b.name) ? 1 : 0) - (/Google|Amélie|Thomas/.test(a.name) ? 1 : 0); })[0] || null; }
   if (window.speechSynthesis) { loadVoice(); speechSynthesis.onvoiceschanged = loadVoice; }
   function speak(t, pitch) {
+    return; // la voix de synthèse est désactivée
     if (!S.settings.voice || !window.speechSynthesis) return;
     try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t.replace(/·/g, ',')); u.lang = 'fr-FR'; if (frVoice) u.voice = frVoice; u.rate = pitch ? 0.95 : 1; u.pitch = pitch || 1.15; speechSynthesis.speak(u); } catch (e) {}
   }
@@ -8092,7 +8095,7 @@ window.QUADWALK = {
   function renderHome() {
     $('adultBtn').innerHTML = S.sync.role === 'grand' ? ic('team') : ic('lock');
     var p = progress(), t = TIERS[p.l - 1];
-    var hn = S.letterDone ? S.settings.heroName : 'Ton héroïne';
+    var hn = S.letterDone && S.settings.heroName ? S.settings.heroName : 'Ton héroïne';
     $('heroTitle').textContent = hn;
     $('heroName').textContent = hn;
     $('hello').textContent = S.settings.childName ? 'Salut ' + S.settings.childName + ' !' : 'Salut !';
@@ -8495,10 +8498,10 @@ window.QUADWALK = {
     }
     function draw() {
       var s = q.steps[i], r = target(s), last = i === q.steps.length - 1, pad = 7;
-      var who = q.o.adult ? 'Guide des grands' : (esc(S.settings.heroName || 'Nova') + ' t\'explique');
+      var who = q.o.adult ? 'Guide des grands' : (esc(S.settings.heroName || 'Ton héroïne') + ' t\'explique');
       root.innerHTML = (r ? '<div class="ring" style="left:' + (r.left - pad) + 'px;top:' + (r.top - pad) + 'px;width:' + (r.width + pad * 2) + 'px;height:' + (r.height + pad * 2) + 'px"></div>' : (q.o.soft ? '' : '<div class="dim"></div>')) +
         '<div class="ccard" role="dialog" aria-live="polite"><div class="who"><span class="av">' + ic('star') + '</span><b>' + who + '</b>' + (q.steps.length > 1 ? '<i>' + (i + 1) + ' / ' + q.steps.length + '</i>' : '') + '</div>' +
-        '<p>' + s.x + '</p><button class="btn" id="cNext">' + (last ? (q.o.ok || 'J\'ai compris !') : 'Suivant') + '</button></div>';
+        '<p>' + (typeof s.x === 'function' ? s.x() : s.x) + '</p><button class="btn" id="cNext">' + (last ? (q.o.ok || 'J\'ai compris !') : 'Suivant') + '</button></div>';
       var c = root.querySelector('.ccard'), ch = c.offsetHeight, top;
       if (!r) top = Math.max(16, (innerHeight - ch) / 2);
       else if (r.bottom + pad + 14 + ch < innerHeight - 12) top = r.bottom + pad + 14;
@@ -8506,7 +8509,7 @@ window.QUADWALK = {
       else top = innerHeight - ch - 16;
       c.style.top = top + 'px';
       root.querySelector('#cNext').addEventListener('click', function (e) { e.stopPropagation(); next(); });
-      if (!q.o.adult && !q.o.mute) speak(s.x.replace(/<[^>]+>/g, ''));
+      if (!q.o.adult && !q.o.mute) speak(String(typeof s.x === 'function' ? s.x() : s.x).replace(/<[^>]+>/g, ''));
     }
     function next() { i++; if (i < q.steps.length) draw(); else end(); }
     function end() {
@@ -8518,12 +8521,12 @@ window.QUADWALK = {
     if (!q.o.soft) root.addEventListener('click', function (e) { if (!e.target.closest('.ccard')) next(); });
     draw();
   }
-  function heroN() { return esc(S.settings.heroName || 'Nova'); }
+  function heroN() { return esc(S.settings.heroName || 'Ton héroïne'); }
   function petN() { return S.pet ? esc(S.pet.name) : 'ton compagnon'; }
   function guideFor(name) {
     if (S.sync.role === 'grand' && name !== 'home') return;
     if (name === 'home') tip('home', [
-      { t: '#stage', x: 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.' },
+      { t: '#stage', x: function () { return 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.'; }, x0: 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.' },
       !S.pet && { t: '#stage', x: 'Tu vois l\'œuf magique à côté de moi ? Il va éclore dès que tu gagnes ta première étoile !' },
       { t: '#s-home .pill', x: 'Ici, ce sont tes étoiles. Chaque mission réussie t\'en donne une. Avec assez d\'étoiles, je gagne un nouveau pouvoir !' },
       { t: '#goMorning', x: 'Le matin, avant l\'école, appuie ici : c\'est ta mission du matin.' },
@@ -8715,7 +8718,6 @@ window.QUADWALK = {
           '<label>Temps de jeu par jour (minutes, 0 = illimité)<input type="number" id="sMin" min="0" max="120" value="' + st.minutesPerDay + '"></label>' +
           '<label>Étoiles maximum par jour<input type="number" id="sMax" min="1" max="10" value="' + st.maxStars + '"></label>' +
           '<label>Rythme de progression<select id="sPace"><option value="lent">Lent</option><option value="normal">Normal</option><option value="rapide">Rapide</option></select></label>' +
-          '<label style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="sVoice"' + (st.voice ? ' checked' : '') + ' style="width:24px;height:24px"> L\'héroïne parle à voix haute</label>' +
           '<label style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="sNight"' + (st.nightOn ? ' checked' : '') + ' style="width:24px;height:24px"> Grande mission de la nuit (2 étoiles, en plus du maximum du jour)</label>' +
           '<label>Texte de la mission de la nuit<input type="text" id="sNightL" maxlength="60" value="' + esc(st.nightLabel || '') + '" placeholder="Cette nuit, j\'ai dormi toute seule dans mon lit"></label>' +
           '<label>Code secret (4 chiffres)<input type="text" id="sCode" inputmode="numeric" maxlength="4" value="' + esc(st.code) + '"></label>' +
@@ -8738,10 +8740,10 @@ window.QUADWALK = {
         setTimeout(function () { delete btn.dataset.sure; btn.textContent = 'Tout effacer sur ce téléphone'; btn.style.borderColor = ''; }, 4000);
       });
       p.querySelector('#sSave').addEventListener('click', function () {
-        st.childName = p.querySelector('#sName').value.trim(); st.heroName = p.querySelector('#sHero').value.trim() || 'Nova';
+        st.childName = p.querySelector('#sName').value.trim(); st.heroName = p.querySelector('#sHero').value.trim() || st.heroName;
         st.minutesPerDay = Math.max(0, Math.min(120, parseInt(p.querySelector('#sMin').value, 10) || 0));
         st.maxStars = Math.max(1, Math.min(10, parseInt(p.querySelector('#sMax').value, 10) || 5));
-        st.pace = p.querySelector('#sPace').value; st.voice = p.querySelector('#sVoice').checked;
+        st.pace = p.querySelector('#sPace').value;
         st.nightOn = p.querySelector('#sNight').checked; st.nightLabel = p.querySelector('#sNightL').value.trim();
         var c = p.querySelector('#sCode').value.replace(/\D/g, ''); if (c.length === 4) st.code = c;
         S.levelSeen = Math.min(S.levelSeen, Math.max(1, levelFor(S.stars)));
@@ -8968,7 +8970,7 @@ window.QUADWALK = {
   ];
   function openTalk() {
     openOv(function (p) {
-      p.innerHTML = '<div class="top"><p class="big h" style="text-align:left">' + esc(S.settings.heroName) + '</p><button class="iconbtn" data-close aria-label="Fermer">' + ic('close') + '</button></div><div class="chat" id="chat" aria-live="polite"></div><div class="choices" id="choices"></div>';
+      p.innerHTML = '<div class="top"><p class="big h" style="text-align:left">' + esc(S.settings.heroName || 'Ton héroïne') + '</p><button class="iconbtn" data-close aria-label="Fermer">' + ic('close') + '</button></div><div class="chat" id="chat" aria-live="polite"></div><div class="choices" id="choices"></div>';
       var chat = p.querySelector('#chat'), ch = p.querySelector('#choices');
       function line(cls, t) { var d = document.createElement('div'); d.className = cls; d.textContent = nb(t); chat.appendChild(d); p.scrollTop = p.scrollHeight; }
       function step(id) {
@@ -9228,7 +9230,7 @@ window.QUADWALK = {
       p.querySelector('#rLetter').addEventListener('click', function () { closeOv(); letter(); });
     });
   }
-  var HERO_IDEAS = ['Nova', 'Luna', 'Étoile', 'Aurore', 'Stella'];
+  var HERO_IDEAS = ['Luna', 'Étoile', 'Aurore', 'Stella', 'Lumi'];
   var PET_IDEAS = ['Pixel', 'Plume', 'Mochi', 'Lilas', 'Câlin'];
   function nameChips(ideas) {
     return '<div class="nchips">' + ideas.map(function (x) { return '<button class="chip" type="button" data-n="' + esc(x) + '">' + esc(x) + '</button>'; }).join('') + '</div>';
