@@ -41,9 +41,12 @@ button{cursor:pointer}
 .lvl .rank{font-size:14px;font-weight:800;color:#FFE08A}
 .bar{height:10px;border-radius:999px;background:rgba(255,255,255,.18);overflow:hidden;margin-top:6px}
 .bar i{display:block;height:100%;background:#FFC23D;border-radius:999px;transition:width .6s}
-#pwBar{position:absolute;right:10px;top:12px;z-index:3;display:flex;flex-direction:column;gap:9px}
+#skyBg{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none}
+#skyBg i{position:absolute;inset:0;background:url(royaume_jour.jpg) center 12%/cover no-repeat}
+#skyBg .night{background-image:linear-gradient(180deg,rgba(7,5,31,.25),rgba(7,5,31,0) 45%),url(royaume_nuit.jpg);opacity:calc(1 - var(--day,0))}
+#pwBar{position:absolute;right:10px;top:12px;z-index:3;display:flex;flex-direction:column;gap:7px}
 #pwBar:empty{display:none}
-.pw{width:48px;height:48px;border-radius:50%;border:2px solid rgba(255,255,255,.55);display:grid;place-items:center;font-size:23px;line-height:1;padding:0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.4),inset 0 2px 6px rgba(255,255,255,.35);transition:transform .15s,opacity .25s,filter .25s;-webkit-tap-highlight-color:transparent}
+.pw{width:var(--pw,48px);height:var(--pw,48px);border-radius:50%;border:2px solid rgba(255,255,255,.55);display:grid;place-items:center;font-size:23px;line-height:1;padding:0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.4),inset 0 2px 6px rgba(255,255,255,.35);transition:transform .15s,opacity .25s,filter .25s;-webkit-tap-highlight-color:transparent}
 .pw:active{transform:scale(.88)}
 .pw.on{transform:scale(1.15);border-color:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.25),0 0 22px currentColor}
 #pwBar.wait .pw:not(.on){opacity:.4;filter:saturate(.4)}
@@ -51,6 +54,8 @@ button{cursor:pointer}
 .pw2{background:radial-gradient(circle at 35% 30%,#D9C6FF,#7B4DFF 70%);color:#A77BFF}
 .pw3{background:radial-gradient(circle at 35% 30%,#C9F3FF,#2F8BFF 70%);color:#6FD3FF}
 .pw4{background:radial-gradient(circle at 35% 30%,#FFC9A0,#E8462B 70%);color:#FF7A3D}
+.pw6{background:radial-gradient(circle at 35% 30%,#FFF3B0,#FF9F1C 70%);color:#FFD27A}
+.pw7{background:radial-gradient(circle at 35% 30%,#B9C4FF,#141A5C 75%);color:#9FB0FF}
 .pw5{background:radial-gradient(circle at 35% 30%,#E6E0FF,#3B2FA8 70%);color:#C8B0FF}
 @keyframes pwNew{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
 .pw.new{animation:pwNew 1.1s ease-in-out 4}
@@ -220,6 +225,7 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
       </div>
     </div>
     <div id="stageWrap">
+      <div id="skyBg" aria-hidden="true"><i class="day"></i><i class="night"></i></div>
       <div id="stage" role="img" aria-label="Ton héroïne. Glisse pour la faire tourner, touche-la pour qu'elle saute."></div>
       <div id="pwBar" aria-label="Ses pouvoirs"></div>
       <div class="lvl"><div class="name h" id="heroName">Ton héroïne</div><div class="rank" id="heroRank"></div><div class="bar"><i id="heroBar" style="width:0%"></i></div></div>
@@ -7404,7 +7410,24 @@ window.QUADWALK = {
   var NIGHT = ['#07051F', '#231C66', '#4A3CB8'], DAY = ['#5FB4FF', '#A8D8FF', '#FFE2A8'];
   function mixHex(a, b, k) { _c0.set(a); _c1.set(b); return '#' + _c0.lerp(_c1, k).getHexString(); }
   var lastDay = -1;
+  // the sky she chose: 'day' (sun up) or 'night' (moon up, or nothing chosen yet)
+  var skyMode = 'none', sunUp = 0, moonUp = 0, sunS = null, moonS = null;
+  function setSky(mode, instant) {
+    skyMode = mode === 'day' ? 'day' : mode === 'night' ? 'night' : 'none';
+    if (!sunS) { sunS = skySprite('sun'); moonS = skySprite('moon'); }
+    if (instant) { sunUp = skyMode === 'day' ? 1 : 0; moonUp = skyMode === 'night' ? 1 : 0; dayMix = sunUp; lastDay = -1; }
+  }
+  function skyEase(k) { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); }
+  function placeSky(sp, k, t) { if (!sp) return; var e = skyEase(k); sp.visible = k > 0.001; sp.position.set(-0.6 - (1 - e) * 0.3, 0.3 + e * 1.4, -1.6); sp.material.opacity = Math.min(1, e * 1.5); }
   function updateSky(dt) {
+    var wantSun = skyMode === 'day' ? 1 : 0, wantMoon = skyMode === 'night' ? 1 : 0;
+    // one goes down before the other comes up
+    if (wantSun > sunUp && moonUp > 0.3) wantSun = sunUp;
+    if (wantMoon > moonUp && sunUp > 0.3) wantMoon = moonUp;
+    sunUp += Math.sign(wantSun - sunUp) * Math.min(Math.abs(wantSun - sunUp), dt * 0.8);
+    moonUp += Math.sign(wantMoon - moonUp) * Math.min(Math.abs(wantMoon - moonUp), dt * 0.8);
+    if (sunS) { placeSky(sunS, sunUp); placeSky(moonS, moonUp); var pulse = 1 + Math.sin(performance.now() / 300) * 0.035; sunS.scale.set(1.15 * pulse, 1.15 * pulse, 1); sunS.material.rotation += dt * 0.25; }
+    dayTarget = skyEase(sunUp);
     dim += (dimTarget - dim) * Math.min(1, dt * 6);
     dayMix += (dayTarget - dayMix) * Math.min(1, dt * 2.2);
     flashBoost *= Math.pow(0.02, dt);
@@ -7417,7 +7440,7 @@ window.QUADWALK = {
       g2.addColorStop(0, mixHex(NIGHT[0], DAY[0], dayMix)); g2.addColorStop(0.55, mixHex(NIGHT[1], DAY[1], dayMix)); g2.addColorStop(1, mixHex(NIGHT[2], DAY[2], dayMix));
       bx.fillStyle = g2; bx.fillRect(0, 0, 4, 256); bgTex.needsUpdate = true;
       // the sky is the frame's CSS background now: paint the day/night change there
-      var wr = stage.parentNode; if (wr && wr.style) wr.style.background = dayMix < 0.004 ? '' : 'linear-gradient(180deg,' + mixHex(NIGHT[0], DAY[0], dayMix) + ' 0%,' + mixHex(NIGHT[1], DAY[1], dayMix) + ' 55%,' + mixHex(NIGHT[2], DAY[2], dayMix) + ' 100%)';
+      var wr = stage.parentNode; if (wr && wr.style) wr.style.setProperty('--day', dayMix.toFixed(3));
       scene.fog.color.set(mixHex('#231C66', '#A8D8FF', dayMix));
     }
   }
@@ -7529,17 +7552,7 @@ window.QUADWALK = {
       if (once(f, 'tp2', 4.6)) { flashBoost = 0.8; for (var s3 = 0; s3 < 24; s3++) { var a3 = s3 / 24 * Math.PI * 2; emit({ pos: new V(0, 0.1, 0), vel: new V(Math.cos(a3) * 1.8, 0.1, Math.sin(a3) * 1.8), life: 0.6, s0: 0.08, s1: 0.03, cols: [0xFFFFFF, 0xB45CFF], drag: 2 }); } }
     }, end: function () { rocks.forEach(killMesh); } }); },
     // 5 · Maîtresse du temps: a golden clock appears, time stops, then night turns to day and back
-    5: function () { var clockG = null, hands = [], sun = null, moon = null; return addFx({ dur: 8.6, step: function (t, dt, f) {
-      // a sun rises and brings the day, then a moon rises and brings the night back
-      if (once(f, 'sky', 0)) { sun = skySprite('sun'); moon = skySprite('moon'); }
-      var ease = function (k) { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
-      var su = t < 5.0 ? ease((t - 2.7) / 1.1) : 1 - ease((t - 5.0) / 1.0);
-      sun.position.set(-0.95 + (1 - su) * 0.35, 0.3 + su * 1.35, -1.4); sun.material.opacity = Math.min(1, su * 1.6); sun.material.rotation = t * 0.35;
-      var sp = 1 + Math.sin(t * 5) * 0.04; sun.scale.set(1.25 * sp, 1.25 * sp, 1);
-      var mo = t < 7.6 ? ease((t - 5.2) / 1.1) : 1 - ease((t - 7.6) / 0.9);
-      moon.position.set(-0.95 + (1 - mo) * 0.35, 0.3 + mo * 1.35, -1.4); moon.material.opacity = Math.min(1, mo * 1.6);
-      if (once(f, 'moonstars', 5.6)) for (var ms = 0; ms < 26; ms++) emit({ pos: new V(rnd(-1.6, 1.6), rnd(1.0, 2.6), rnd(-1.8, -0.8)), vel: new V(0, 0, 0), life: rnd(1.6, 2.6), s0: 0.03, s1: 0.07, cols: [0xFFFFFF, 0xDCD4FF], flick: 1 });
-
+    5: function () { var clockG = null, hands = []; return addFx({ dur: 5.4, step: function (t, dt, f) {
       if (once(f, 'clock', 0)) {
         clockG = new T.Group(); clockG.position.set(0, 1.05, -0.45);
         var gold = new T.MeshStandardMaterial({ color: 0xFFD27A, emissive: 0xFFB020, emissiveIntensity: 0.8, metalness: 0.6, roughness: 0.3, transparent: true });
@@ -7549,21 +7562,30 @@ window.QUADWALK = {
         clockG.scale.setScalar(0.001); scene.add(clockG);
       }
       if (clockG) {
-        var sc = t < 0.6 ? (function (e) { var c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2); })(t / 0.6) : t > 7.9 ? Math.max(0.001, 1 - (t - 7.9) / 0.6) : 1;
+        var sc = t < 0.6 ? (function (e) { var c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2); })(t / 0.6) : t > 4.7 ? Math.max(0.001, 1 - (t - 4.7) / 0.6) : 1;
         clockG.scale.setScalar(sc); clockG.rotation.y = Math.sin(t * 0.8) * 0.15;
-        var spd = t < 1.2 ? 6 : t < 2.8 ? 0.2 : t < 5.6 ? 14 : 3;
+        var spd = t < 1.0 ? 6 : t < 3.4 ? 0 : 16;
         hands[0].rotation.z -= dt * spd * 0.25; hands[1].rotation.z -= dt * spd;
       }
-      // time stops: everything around her freezes for a moment
-      timeScale = (t > 1.2 && t < 2.8) ? 0.03 : 1;
-      if (once(f, 'freeze', 1.2)) { flashBoost = 0.7; for (var s = 0; s < 30; s++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 0.15, r: rnd(0.5, 1.3), y: rnd(0.1, 2.2), vy: 0 }, life: 1.6, s0: 0.05, s1: 0.05, cols: [0xFFE7A8, 0xFFFFFF] }); }
-      if (once(f, 'day', 3.1)) { dayTarget = 1; for (var s2 = 0; s2 < 24; s2++) emit({ pos: new V(rnd(-1.4, 1.4), rnd(1.3, 2.1), rnd(-2.0, -1)), vel: new V(0, -0.2, 0), life: 2, s0: 0.2, s1: 0.4, cols: [0xFFF2C8, 0xFFD27A], alpha: 0.5 }); }
-      if (once(f, 'night', 5.6)) dayTarget = 0;
-    }, end: function () { if (clockG) killMesh(clockG); [sun, moon].forEach(function (m) { if (m) { scene.remove(m); m.material.dispose(); } }); timeScale = 1; dayTarget = 0; } }); }
+      // time stops: everything around her freezes, then starts again in a whirl
+      timeScale = (t > 1.0 && t < 3.4) ? 0.02 : 1;
+      if (once(f, 'freeze', 1.0)) { flashBoost = 0.7; for (var s = 0; s < 34; s++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 0.1, r: rnd(0.5, 1.3), y: rnd(0.1, 2.2), vy: 0 }, life: 2.4, s0: 0.05, s1: 0.05, cols: [0xFFE7A8, 0xFFFFFF] }); }
+      if (once(f, 'go', 3.4)) { camShake = 0.04; for (var s3 = 0; s3 < 30; s3++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 3.2, r: rnd(0.7, 1.2), y: rnd(0.1, 2.2), vy: rnd(0.2, 0.6) }, life: 1.4, s0: 0.06, s1: 0.02, cols: [0xFFE7A8, 0xFFC23D] }); }
+    }, end: function () { if (clockG) killMesh(clockG); timeScale = 1; } }); },
+    // 6 · the sun: she raises her hand, the sun rises and the day stays until she calls the moon
+    6: function () { return addFx({ dur: 2.6, step: function (t, dt, f) {
+      if (once(f, 'call', 0.5)) { setSky('day'); flashBoost = 0.6; for (var s = 0; s < 28; s++) emit({ pos: heroPoint(0, 1.9, 0), vel: new V(rnd(-1.4, 0.2), rnd(0.6, 1.8), rnd(-0.8, -0.2)), life: 1.4, s0: 0.08, s1: 0.03, cols: [0xFFF6C8, 0xFFD27A, 0xFFB21E], drag: 1.5 }); }
+      if (t > 1.0 && t < 2.2 && Math.random() < dt * 14) emit({ pos: new V(rnd(-1.4, 1.4), rnd(1.3, 2.1), rnd(-2, -1)), vel: new V(0, -0.15, 0), life: 1.8, s0: 0.12, s1: 0.3, cols: [0xFFF2C8, 0xFFD27A], alpha: 0.5 });
+    } }); },
+    // 7 · the moon: the sun goes down, the moon rises and the night stays until she calls the sun
+    7: function () { return addFx({ dur: 2.6, step: function (t, dt, f) {
+      if (once(f, 'call', 0.5)) { setSky('night'); flashBoost = 0.3; for (var s = 0; s < 24; s++) emit({ pos: heroPoint(0, 1.9, 0), vel: new V(rnd(-1.4, 0.2), rnd(0.6, 1.6), rnd(-0.8, -0.2)), life: 1.6, s0: 0.07, s1: 0.03, cols: [0xFFFFFF, 0xDCD4FF, 0xA77BFF], drag: 1.5 }); }
+      if (t > 1.2 && t < 2.4 && Math.random() < dt * 16) emit({ pos: new V(rnd(-1.6, 1.6), rnd(1.0, 2.4), rnd(-1.8, -0.8)), vel: new V(0, 0, 0), life: rnd(1.6, 2.6), s0: 0.03, s1: 0.07, cols: [0xFFFFFF, 0xDCD4FF], flick: 1 });
+    } }); }
   };
   var timeScale = 1, tpT = -1;
   function power(n, withGesture) {
-    n = Math.max(1, Math.min(5, n || level));
+    n = Math.max(1, Math.min(7, n || level));
     if (withGesture !== false) act('spell', 2.7);
     return POWERS[n]();
   }
@@ -8014,7 +8036,7 @@ window.QUADWALK = {
   }
   function start() { if (running) return; running = true; resize(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); }
-  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, status: function () { return { hero: realCur ? realCur.userData.form : null, pet: cur ? cur.userData.form : null, want: curForm, giant: !!giant }; }, rotate: function (v) { rotY = v; }, focus: function (f) { camFocus = f; if (f) _fd = f.dist; }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, fly: goFly, breathe: breathe, power: function (n) { return power(n); }, transform: transform, busy: function () { return transT >= 0; }, mentor: mentorVisit, mentorLeave: mentorLeave, mentorActive: function () { return M_.t >= 0 ? M_.who : null; }, preload: function (n) { loadForm(n, function () {}); } };
+  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, status: function () { return { hero: realCur ? realCur.userData.form : null, pet: cur ? cur.userData.form : null, want: curForm, giant: !!giant }; }, rotate: function (v) { rotY = v; }, focus: function (f) { camFocus = f; if (f) _fd = f.dist; }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, fly: goFly, breathe: breathe, power: function (n) { return power(n); }, setSky: function (m, i) { setSky(m, i); }, sky: function () { return skyMode; }, transform: transform, busy: function () { return transT >= 0; }, mentor: mentorVisit, mentorLeave: mentorLeave, mentorActive: function () { return M_.t >= 0 ? M_.who : null; }, preload: function (n) { loadForm(n, function () {}); } };
 };
 </script>
 <script>(function () {
@@ -8163,37 +8185,44 @@ window.QUADWALK = {
   document.querySelectorAll('#nav button').forEach(function (b) { b.addEventListener('click', function () { go(b.getAttribute('data-go')); }); });
 
   // ---------- Home ----------
-  var PW_ICON = ['✨', '⚡', '💧', '🔥', '⏳'];
+  var PW_ICON = ['✨', '⚡', '💧', '🔥', '⏳', '☀️', '🌙'];
+  var PW_NAME = { 5: 'Arrêter le temps', 6: 'Le soleil : faire le jour', 7: 'La lune : faire la nuit' };
   var PW_LINE = {
     1: ['Étincelle ! Je rallume toutes les lumières !', 'Clac ! Lumière !'],
     2: ['Éclair ! Personne ne va plus vite que moi !', 'Zip ! La super vitesse !'],
     3: ['Cœur des eaux ! L\'eau devient glace !', 'Regarde, des cristaux de glace !'],
     4: ['Force de la terre et du feu !', 'La terre tremble… et pouf, téléportation !'],
-    5: ['Maîtresse du temps ! Le soleil se lève… puis la lune !', 'Le jour ou la nuit ? C\'est moi qui choisis !']
+    5: ['Stop ! J\'arrête le temps !', 'Tout s\'arrête… et ça repart !'],
+    6: ['Soleil, lève-toi ! Place au jour !', 'Et voilà le jour ! C\'est moi qui choisis.'],
+    7: ['Lune, à toi ! Place à la nuit !', 'Bonne nuit le soleil, bonjour la lune !']
   };
   var pwUntil = 0, pwShown = 0;
   function drawPowerBar(lv) {
     var bar = $('pwBar');
     if (!hero || !hero.power || !S.letterDone || S.sync.role === 'grand') { bar.innerHTML = ''; return; }
-    if (bar.childElementCount === lv) return;
+    var list = []; for (var k = 1; k <= lv; k++) list.push(k); if (lv >= 5) list.push(6, 7);
+    if (bar.childElementCount === list.length) return;
     bar.innerHTML = '';
-    for (var n = 1; n <= lv; n++) (function (n) {
+    var h = $('stageWrap').clientHeight || 400, sz = Math.max(34, Math.min(48, Math.floor((h - 50 - (list.length - 1) * 7) / list.length)));
+    bar.style.setProperty('--pw', sz + 'px');
+    list.forEach(function (n) {
       var b = document.createElement('button');
       b.className = 'pw pw' + n + (pwShown && n > pwShown ? ' new' : ''); b.textContent = PW_ICON[n - 1];
-      b.setAttribute('aria-label', 'Pouvoir ' + TIERS[n - 1].name);
+      b.setAttribute('aria-label', 'Pouvoir ' + (PW_NAME[n] || TIERS[n - 1].name));
       ['pointerdown', 'pointerup', 'pointermove'].forEach(function (ev) { b.addEventListener(ev, function (e) { e.stopPropagation(); }); });
       b.addEventListener('click', function (e) { e.stopPropagation(); usePower(n, b); });
       bar.appendChild(b);
-    })(n);
-    pwShown = lv;
+    });
+    pwShown = list[list.length - 1];
     if (lv >= 1) setTimeout(function () { if (current === 'home') tip('pw', [{ t: '#pwBar', x: function () { return 'Ce sont mes pouvoirs ! Touche un rond et je l\'utilise. À chaque niveau, un nouveau pouvoir apparaît ici.'; } }], { screen: 'home', delay: 400, ok: 'Super !' }); }, 600);
   }
-  var PW_DUR = { 1: 4.6, 2: 3.6, 3: 4.6, 4: 5.6, 5: 8.6 };
+  var PW_DUR = { 1: 4.6, 2: 3.6, 3: 4.6, 4: 5.6, 5: 5.4, 6: 2.6, 7: 2.6 };
   function usePower(n, b) {
     if (Date.now() < pwUntil || celebrating || (hero.busy && hero.busy()) || (hero.mentorActive && hero.mentorActive())) return;
     pwUntil = Date.now() + Math.min(3, PW_DUR[n] || 3) * 1000;
     var bar = $('pwBar'); bar.classList.add('wait'); b.classList.add('on'); b.classList.remove('new');
     try { hero.power(n); } catch (e) {}
+    if (n === 6 || n === 7) { S.sky = n === 6 ? 'day' : 'night'; saveLocal(); }
     heroSay(pick(PW_LINE[n]));
     setTimeout(function () { bar.classList.remove('wait'); b.classList.remove('on'); }, pwUntil - Date.now());
   }
@@ -9424,6 +9453,7 @@ window.QUADWALK = {
   var tapN = 0;
   try { hero = window.HeroScene($('stage'), { level: levelFor(S.stars), pet: S.pet, onTap: function () { tapN++; hero.petTap(); if (hero.mentorActive && hero.mentorActive()) return; if (levelFor(S.stars) >= 5 && tapN % 4 === 0) { hero.giant(); heroSay((S.pet ? S.pet.name : 'Ton dragon') + ' devient immense pour te protéger !'); } else heroSay(pick(TAP_LINES)); } }); } catch (e) { $('stage').innerHTML = '<p class="empty">La 3D n\'est pas disponible sur cet appareil.</p>'; }
   window.__hero = hero;
+  if (hero && hero.setSky && S.sky && levelFor(S.stars) >= 5) hero.setSky(S.sky, true);
   refreshUnlocks();
   go(isLocked() ? 'locked' : 'home');
   if (!isLocked() && !DEMO) setTimeout(checkHatch, 2500);
