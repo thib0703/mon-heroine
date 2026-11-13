@@ -31,8 +31,10 @@ button{cursor:pointer}
 .btn.small{min-height:44px;font-size:16px;width:auto}
 .row{display:flex;gap:10px}
 .row>.btn{flex:1}
-#stageWrap{position:relative;height:min(56vh,500px);min-height:320px;border-radius:26px;overflow:hidden;background:#0B0828}
-#stage{position:absolute;inset:0}
+#stageWrap{position:relative;height:min(56vh,500px);min-height:320px;border-radius:26px;background:linear-gradient(180deg,#07051F 0%,#231C66 55%,#4A3CB8 100%);touch-action:none}
+#stageWrap>.lvl{z-index:3}
+#stage{z-index:2;pointer-events:none}
+#stage{position:absolute;left:0;right:0;bottom:0;top:-32%}
 #stage canvas{display:block;width:100%;height:100%;touch-action:none}
 .lvl{position:absolute;left:14px;right:14px;bottom:12px;pointer-events:none}
 .lvl .name{font-size:26px;font-weight:700;text-shadow:0 2px 14px rgba(0,0,0,.5)}
@@ -6788,7 +6790,7 @@ window.QUADWALK = {
 <script>window.HeroScene = function (stage, opts) {
   opts = opts || {};
   var T = window.THREE, V = T.Vector3;
-  var renderer = new T.WebGLRenderer({ antialias: true });
+  var renderer = new T.WebGLRenderer({ antialias: true, alpha: true }); renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = T.SRGBColorSpace;
   renderer.toneMapping = T.ACESFilmicToneMapping;
@@ -6803,7 +6805,8 @@ window.QUADWALK = {
   gr.addColorStop(0, '#07051F'); gr.addColorStop(0.55, '#231C66'); gr.addColorStop(1, '#4A3CB8');
   bx.fillStyle = gr; bx.fillRect(0, 0, 4, 256);
   var bgTex = new T.CanvasTexture(bg); bgTex.colorSpace = T.SRGBColorSpace;
-  scene.background = bgTex;
+  // le fond est dessiné par le cadre (CSS) : au-dessus du cadre, seule l'héroïne dépasse
+  scene.background = null;
   scene.fog = new T.Fog(0x231C66, 7, 16);
 
   var camera = new T.PerspectiveCamera(32, 1, 0.1, 100);
@@ -7791,7 +7794,7 @@ window.QUADWALK = {
     var blur = mk({ t: { value: null }, d: { value: new T.Vector2() } },
       'uniform sampler2D t; uniform vec2 d; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(t, vUv).rgb * 0.227027;\nc += (texture2D(t, vUv + d * 1.3846).rgb + texture2D(t, vUv - d * 1.3846).rgb) * 0.3162162;\nc += (texture2D(t, vUv + d * 3.2308).rgb + texture2D(t, vUv - d * 3.2308).rgb) * 0.0702703;\ngl_FragColor = vec4(c, 1.0); }');
     var comp = mk({ s: { value: null }, b0: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: 0.6 } },
-      'uniform sampler2D s, b0, b1, b2; uniform float k; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(s, vUv).rgb + k * (texture2D(b0, vUv).rgb * 0.45 + texture2D(b1, vUv).rgb * 0.7 + texture2D(b2, vUv).rgb * 0.9);\ngl_FragColor = vec4(c, 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}', true);
+      'uniform sampler2D s, b0, b1, b2; uniform float k; varying vec2 vUv;\nvoid main(){ vec3 c = texture2D(s, vUv).rgb + k * (texture2D(b0, vUv).rgb * 0.45 + texture2D(b1, vUv).rgb * 0.7 + texture2D(b2, vUv).rgb * 0.9);\nfloat a = clamp(max(texture2D(s, vUv).a, max(c.r, max(c.g, c.b))), 0.0, 1.0);\ngl_FragColor = vec4(c, a);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}', true);
     function mkRT(w, h, ms) { var r = new T.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), { type: T.HalfFloatType, depthBuffer: !!ms, samples: ms || 0 }); r.texture.generateMipmaps = false; return r; }
     function size(w, h) {
       if (w === W && h === H && rt) return; W = w; H = h;
@@ -7817,9 +7820,10 @@ window.QUADWALK = {
   // Resize
   var baseDist = 4.7, _lt = new V(), camFocus = null, _fp = new V(), _fs = new V(0.6, 0.8, 0.2), _fo = new V(), _fd = 2;
   function resize() {
-    var w = stage.clientWidth, h = stage.clientHeight;
-    renderer.setSize(w, h, false); camera.aspect = w / h;
+    var w = stage.clientWidth, H = stage.clientHeight, fr = stage.parentNode, h = fr && fr.clientHeight ? Math.min(fr.clientHeight, H) : H;
+    renderer.setSize(w, H, false); camera.aspect = w / h;
     if (!w || !h) return;
+    if (H > h) camera.setViewOffset(w, h, 0, h - H, w, H); else camera.clearViewOffset();
     baseDist = opts.dist || Math.max(4.1, 3.95 / (w / h));
     camera.position.set(0, 1.35, baseDist); camera.lookAt(camTarget);
     camera.updateProjectionMatrix();
@@ -7828,7 +7832,7 @@ window.QUADWALK = {
 
   // Interaction: drag to rotate, tap to jump
   var rotY = -0.35, velY = 0, dragging = false, lastX = 0, downX = 0, downY = 0, moved = false, jumpT = -1;
-  var el = renderer.domElement;
+  var el = stage.parentNode || renderer.domElement;
   el.style.touchAction = 'none';
   el.addEventListener('pointerdown', function (e) { dragging = true; moved = false; lastX = downX = e.clientX; downY = e.clientY; velY = 0; el.setPointerCapture(e.pointerId); });
   el.addEventListener('pointermove', function (e) {
@@ -7924,11 +7928,23 @@ window.QUADWALK = {
     camera.position.set(cxs + (Math.random() - 0.5) * sk, 1.35 + (camZoom - 1) * 1.1 * vy + (Math.random() - 0.5) * sk, baseDist * camZoom);
     _lt.copy(camTarget); _lt.y += (camZoom - 1) * 1.0 * vy + M_.cam * 0.12; _lt.x += cxs; camera.lookAt(_lt);
     }
+    if (time - alphaFixT > 0.5) { alphaFixT = time; fixAdditive(); }
     if (bloom.on) bloom.render(); else renderer.render(scene, camera);
     perfCheck();
     if (running) raf = requestAnimationFrame(frame);
   }
-  var running = false, raf = 0, lastFxT = 0;
+  var running = false, raf = 0, lastFxT = 0, alphaFixT = -1;
+  // les effets lumineux (additifs) ne doivent pas rendre opaque le fond transparent au-dessus du cadre
+  function fixAdditive() {
+    scene.traverse(function (o) {
+      var ms = o.material; if (!ms) return; if (!Array.isArray(ms)) ms = [ms];
+      ms.forEach(function (m) {
+        if (m.blending !== T.AdditiveBlending || m.userData.alphaFixed) return;
+        m.blending = T.CustomBlending; m.blendEquation = T.AddEquation; m.blendSrc = T.SrcAlphaFactor; m.blendDst = T.OneFactor;
+        m.blendSrcAlpha = T.ZeroFactor; m.blendDstAlpha = T.OneFactor; m.userData.alphaFixed = true; m.needsUpdate = true;
+      });
+    });
+  }
   // Low-end phones: if frames are slow, lower the quality once
   var pf = { n: 0, t0: 0, done: false };
   function perfCheck() {
@@ -8021,6 +8037,7 @@ window.QUADWALK = {
     S.setupDone = true; S.letterDone = false;
     S.settings = { childName: 'Louna', heroName: '', code: '0000', minutesPerDay: 0, pace: 'normal', maxStars: 999, voice: false };
   }
+  (function () { var f = fresh(); Object.keys(f).forEach(function (k) { if (S[k] === undefined || S[k] === null && f[k] !== null) S[k] = f[k]; }); if (!S.settings) S.settings = f.settings; Object.keys(f.settings).forEach(function (k) { if (S.settings[k] === undefined) S.settings[k] = f.settings[k]; }); })();
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
@@ -8527,8 +8544,8 @@ window.QUADWALK = {
   function guideFor(name) {
     if (S.sync.role === 'grand' && name !== 'home') return;
     if (name === 'home') tip('home', [
-      { t: '#stage', x: function () { return 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.'; }, x0: 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.' },
-      !S.pet && { t: '#stage', x: 'Tu vois l\'œuf magique à côté de moi ? Il va éclore dès que tu gagnes ta première étoile !' },
+      { t: '#stageWrap', x: function () { return 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.'; }, x0: 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.' },
+      !S.pet && { t: '#stageWrap', x: 'Tu vois l\'œuf magique à côté de moi ? Il va éclore dès que tu gagnes ta première étoile !' },
       { t: '#s-home .pill', x: 'Ici, ce sont tes étoiles. Chaque mission réussie t\'en donne une. Avec assez d\'étoiles, je gagne un nouveau pouvoir !' },
       { t: '#goMorning', x: 'Le matin, avant l\'école, appuie ici : c\'est ta mission du matin.' },
       { t: '#goShield', x: 'Si tu as peur, si tu es triste ou si c\'est difficile, appuie sur le Bouclier de courage. Je serai là avec toi.' },
@@ -8561,7 +8578,7 @@ window.QUADWALK = {
   }
   function guideHatch() {
     tip('hatch', [
-      { t: '#stage', x: 'Voici ' + petN() + ' ! Touche-le pour lui faire un câlin. Il grandira à chaque nouveau pouvoir.' },
+      { t: '#stageWrap', x: 'Voici ' + petN() + ' ! Touche-le pour lui faire un câlin. Il grandira à chaque nouveau pouvoir.' },
       { t: '#nav button[data-go="team"]', x: 'Tu le retrouves aussi dans ton équipe, avec tes grands frères.' }
     ], { screen: 'home', delay: 3800 });
   }
@@ -8569,13 +8586,13 @@ window.QUADWALK = {
     if (l < 2) return;
     var t = TIERS[l - 1];
     tip('level' + l, [
-      { t: '#stage', x: 'Nouveau pouvoir : ' + t.name + ' ! Regarde ma nouvelle tenue… et ' + petN() + ' a changé de forme, lui aussi.' },
-      l === 5 && { t: '#stage', x: 'Un secret : touche-moi 4 fois de suite, et ' + petN() + ' devient immense pour te protéger !' },
+      { t: '#stageWrap', x: 'Nouveau pouvoir : ' + t.name + ' ! Regarde ma nouvelle tenue… et ' + petN() + ' a changé de forme, lui aussi.' },
+      l === 5 && { t: '#stageWrap', x: 'Un secret : touche-moi 4 fois de suite, et ' + petN() + ' devient immense pour te protéger !' },
       { t: '#nav button[data-go="powers"]', x: 'De nouvelles cartes d\'aventure t\'attendent dans Pouvoirs. Va vite les voir !' }
     ], { screen: 'home', delay: 2500 });
   }
   function guideBro() {
-    tip('bro', [{ t: '#stage', x: 'Ton grand frère est venu te voir ! Touche-le : il va te montrer son pouvoir.' }], { soft: true, mute: true, delay: 4200, ok: 'D\'accord !' });
+    tip('bro', [{ t: '#stageWrap', x: 'Ton grand frère est venu te voir ! Touche-le : il va te montrer son pouvoir.' }], { soft: true, mute: true, delay: 4200, ok: 'D\'accord !' });
   }
   function guideMsg() {
     tip('msg', [{ t: '#newMsgToast', x: 'Un message de ton frère est arrivé ! Appuie ici pour l\'écouter.' }], { screen: 'home', delay: 1500 });
