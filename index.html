@@ -8035,7 +8035,8 @@ window.QUADWALK = {
   ];
   if (!S.smallGot) S.smallGot = {}; if (!S.smallGiven) S.smallGiven = {};
   if (!S.rewards) S.rewards = {}; if (!S.rewardsGiven) S.rewardsGiven = {}; if (S.surprise === undefined) S.surprise = null;
-  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toastErr("Le téléphone n'a plus de place pour enregistrer. Supprimez un message vocal."); } }
+  var wiping = false;
+  function saveLocal() { if (wiping) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toastErr("Le téléphone n'a plus de place pour enregistrer. Supprimez un message vocal."); } }
   function save() { saveLocal(); schedulePush(); }
   function dirtyConfig() { S.sync.configDirty = true; }
   function day(k) { k = k || today(); if (!S.days[k]) S.days[k] = { done: {}, morning: {}, morningDone: false, bonus: false, starsToday: 0, seconds: 0, awarded: {} }; return S.days[k]; }
@@ -8447,7 +8448,7 @@ window.QUADWALK = {
 
   // ---------- Time limit ----------
   var adultOpen = false;
-  function isLocked() { if (DEMO && S.demoLock) return true; return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= S.settings.minutesPerDay * 60; }
+  function isLocked() { if (DEMO && S.demoLock) return true; return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= (S.settings.minutesPerDay + ((S.timeBonus || {})[today()] || 0)) * 60; }
   setInterval(function () {
     if (document.hidden || adultOpen || !S.setupDone || !S.letterDone || S.sync.role === 'grand') return;
     var d = day(); d.seconds++;
@@ -8585,7 +8586,7 @@ window.QUADWALK = {
       { t: '#todayCard', x: g ? 'Ici, vous suivez la journée de votre sœur : missions cochées, étoiles gagnées, temps de jeu.' : 'Le résumé de sa journée : missions cochées, étoiles gagnées, temps de jeu. En dessous, ses semaines.' },
       { t: '#recBtn', x: 'Les messages vocaux : choisissez quand il se débloque (à un pouvoir précis ou en surprise), appuyez sur le micro et parlez (1 minute). Après le premier message d\'un frère, son héros 3D vient la voir.' },
       { t: '#syncBox', x: g ? 'Votre téléphone est relié au sien : messages et réglages arrivent chez elle tout seuls.' : 'Le code famille relie vos téléphones : sur vos iPhone, choisissez « Je suis un grand frère » et entrez ce code.' },
-      { t: '#sMin', x: 'Les réglages : temps de jeu par jour, étoiles maximum, rythme de progression, voix de l\'héroïne et code secret. Pensez à « Enregistrer les réglages ».' },
+      { t: '#sMin', x: 'Les réglages : temps de jeu par jour, étoiles maximum, rythme de progression, mission de la nuit et code secret. Pensez à « Enregistrer les réglages ».' },
       { t: '#misAdm', x: 'Les missions du jour : ajoutez-en, retirez-en. Celles qu\'elle invente apparaissent ici aussi.' },
       { t: '#tipsBtn', x: 'Ces explications reviennent toutes avec ce bouton, pour elle comme pour vous.' }
     ], { over: true, adult: true, delay: 700, ok: 'Compris' });
@@ -8688,7 +8689,7 @@ window.QUADWALK = {
       ['Nuit toute seule', !S.settings.nightOn ? 'Mission désactivée' : d.night ? 'Oui ! (' + nightsDone() + ' en tout)' : '—'],
       ['Étoiles aujourd\'hui', d.starsToday + ' / ' + S.settings.maxStars],
       ['Défi du jour', r && r.solved ? 'Réussi' : r ? 'Essayé' : '—'],
-      ['Temps de jeu', Math.round((d.seconds || 0) / 60) + ' min']
+      ['Temps de jeu', Math.round((d.seconds || 0) / 60) + ' min' + (((S.timeBonus || {})[today()]) ? ' (+' + S.timeBonus[today()] + ' min redonnées)' : '')]
     ];
     return '<p class="sect" style="margin-top:0">Aujourd\'hui' + (S.settings.childName ? ' pour ' + esc(S.settings.childName) : '') + '</p>' + rows.map(function (x) { return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #2E2780;font-weight:700"><span style="color:#CFC9FF">' + x[0] + '</span><span>' + x[1] + '</span></div>'; }).join('') + (done.length ? '<p class="hint" style="margin:8px 0 0">Missions : ' + done.map(esc).join(' · ') + '</p>' : '');
   }
@@ -8735,7 +8736,7 @@ window.QUADWALK = {
       guideAdult();
       p.querySelector('#resetBtn').addEventListener('click', function () {
         var btn = this;
-        if (btn.dataset.sure) { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); return; }
+        if (btn.dataset.sure) { wiping = true; try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); return; }
         btn.dataset.sure = 1; btn.textContent = 'Appuie encore pour confirmer'; btn.style.borderColor = '#FF8C8C';
         setTimeout(function () { delete btn.dataset.sure; btn.textContent = 'Tout effacer sur ce téléphone'; btn.style.borderColor = ''; }, 4000);
       });
@@ -8749,7 +8750,7 @@ window.QUADWALK = {
         S.levelSeen = Math.min(S.levelSeen, Math.max(1, levelFor(S.stars)));
         dirtyConfig(); save(); this.textContent = 'Enregistré !'; var b = this; setTimeout(function () { b.textContent = 'Enregistrer les réglages'; }, 1500);
       });
-      p.querySelector('#addTime').addEventListener('click', function () { var d = day(); d.seconds = Math.max(0, d.seconds - 600); save(); this.textContent = '10 minutes redonnées'; });
+      p.querySelector('#addTime').addEventListener('click', function () { var tb = S.timeBonus || {}, k = today(), o = {}; o[k] = (tb[k] || 0) + 10; S.timeBonus = o; dirtyConfig(); save(); this.textContent = '10 minutes redonnées' + (S.sync.role === 'grand' ? ' (envoyées sur son téléphone)' : ''); if (current === 'locked' && !isLocked()) go('home'); });
       function drawMis() {
         var box = p.querySelector('#misAdm'); box.innerHTML = '';
         S.missions.forEach(function (m, i) {
@@ -9130,7 +9131,7 @@ window.QUADWALK = {
     if (S.sync.role === 'enfant') { up.progress = progressPayload(); up.progressAt = Date.now(); up.flags = S.flags; }
     if (S.sync.configDirty || (initial && S.sync.role === 'enfant' && !S.sync.configAt)) {
       var st = Object.assign({}, S.settings); delete st.lastFrom;
-      up.config = { settings: st, missions: S.missions, allies: S.allies, rewards: S.rewards, rewardsGiven: S.rewardsGiven, surprise: S.surprise, smallRewards: S.smallRewards, smallGiven: S.smallGiven }; up.configAt = Date.now();
+      up.config = { settings: st, missions: S.missions, allies: S.allies, rewards: S.rewards, rewardsGiven: S.rewardsGiven, surprise: S.surprise, smallRewards: S.smallRewards, smallGiven: S.smallGiven, timeBonus: S.timeBonus || {} }; up.configAt = Date.now();
       S.sync.configAt = up.configAt; S.sync.configDirty = false; saveLocal();
     }
     if (Object.keys(up).length) famRef.set(up, { merge: true }).catch(function () { syncState = 'error'; });
@@ -9143,7 +9144,7 @@ window.QUADWALK = {
       S.settings = Object.assign(S.settings, r.config.settings || {}); S.settings.lastFrom = keepFrom;
       S.missions = r.config.missions || S.missions; S.allies = r.config.allies || [];
       S.rewards = r.config.rewards || S.rewards; S.rewardsGiven = r.config.rewardsGiven || S.rewardsGiven; if (r.config.surprise !== undefined) S.surprise = r.config.surprise;
-      if (r.config.smallRewards) S.smallRewards = r.config.smallRewards; if (r.config.smallGiven) S.smallGiven = r.config.smallGiven;
+      if (r.config.smallRewards) S.smallRewards = r.config.smallRewards; if (r.config.smallGiven) S.smallGiven = r.config.smallGiven; if (r.config.timeBonus) S.timeBonus = r.config.timeBonus;
       S.sync.configAt = r.configAt;
     }
     if (S.sync.role === 'grand' && r.progress) {
@@ -9293,7 +9294,7 @@ window.QUADWALK = {
       on('dGiant', function () { closeOv(); go('home'); setTimeout(function () { if (hero) hero.giant(); }, 300); });
       on('dPoster', function () { closeOv(); S.posterDay = ''; save(); go('home'); setTimeout(morningPoster, 300); });
       on('dLock', function () { closeOv(); S.demoLock = true; save(); go('locked'); heroSay('Pour débloquer : bouton « Espace des grands », code 0000.'); });
-      on('dReset', function () { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+      on('dReset', function () { wiping = true; try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
     });
   }
   if (DEMO) {
