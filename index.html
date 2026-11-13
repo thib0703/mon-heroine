@@ -9275,6 +9275,11 @@ window.QUADWALK = {
         (S.pet ? '' : b('dHatch', ic('star') + 'Faire éclore l\'œuf', '')) +
         (nx && S.pet ? b('dNext', ic('star') + 'Passer au niveau ' + nx.n + ' · ' + nx.name, '') : '') +
         b('dStar', '+1 étoile (petit pouvoir)') +
+        (lv < 5 && S.pet ? b('dMax', 'Aller directement au niveau 5') : '') +
+        '<p class="sect" style="margin:6px 0 0">Récompenses et nuits</p>' +
+        b('dNight', 'Ajouter une nuit toute seule (' + nightsDone() + ' pour l\'instant)') +
+        b('dMorn', 'Ajouter une mission du matin réussie') +
+        b('dSurp', 'Recevoir une surprise des grands frères') +
         '<p class="sect" style="margin:6px 0 0">Pouvoirs débloqués</p><div style="display:flex;gap:6px;flex-wrap:wrap">' +
         TIERS.slice(0, lv).map(function (t) { return '<button class="btn alt" data-pw="' + t.n + '" style="margin:0;width:auto;flex:1;min-width:48px;padding:10px">' + t.n + '</button>'; }).join('') + '</div>' +
         '<p class="sect" style="margin:6px 0 0">Visites et scènes</p>' +
@@ -9289,6 +9294,12 @@ window.QUADWALK = {
       on('dNext', function () { closeOv(); go('home'); S.stars = Math.max(S.stars, tierAt(lv)); save(); setTimeout(checkLevelUp, 300); });
       on('dStar', function () { closeOv(); go('home'); S.stars++; save(); if (hero && hero.power && !(hero.busy && hero.busy())) hero.power(lv); heroSay(pick(BRAVO.other)); setTimeout(function () { checkLevelUp(); checkHatch(); }, 300); });
       p.querySelectorAll('[data-pw]').forEach(function (e) { e.addEventListener('click', function () { closeOv(); go('home'); setTimeout(function () { if (hero && hero.power) hero.power(+e.getAttribute('data-pw')); }, 300); }); });
+      on('dMax', function () { closeOv(); go('home'); for (var k = Math.max(2, S.levelSeen + 1); k <= 4; k++) unlockForLevel(k); S.levelSeen = 4; S.stars = Math.max(S.stars, tierAt(4)); save(); setTimeout(checkLevelUp, 300); });
+      function pastDay(n) { var d = new Date(); d.setDate(d.getDate() - n); return today(d); }
+      function addPast(field) { for (var n = 1; n < 400; n++) { var k = pastDay(n), d = S.days[k] || (S.days[k] = { done: {}, morning: {}, morningDone: false, bonus: false, starsToday: 0, seconds: 0, awarded: {} }); if (!d[field]) { d[field] = true; return; } } }
+      on('dNight', function () { closeOv(); addPast('night'); save(); go('missions'); setTimeout(checkSmall, 400); });
+      on('dMorn', function () { closeOv(); addPast('morningDone'); save(); go('missions'); setTimeout(checkSmall, 400); });
+      on('dSurp', function () { closeOv(); S.surprise = { id: 'd' + Date.now(), text: 'Ce week-end, on t\'emmène manger une glace !' }; save(); go('home'); setTimeout(maybeSurprise, 500); });
       on('dThib', function () { closeOv(); setTimeout(function () { callBrother('thib'); }, 200); });
       on('dVal', function () { closeOv(); setTimeout(function () { callBrother('val'); }, 200); });
       on('dGiant', function () { closeOv(); go('home'); setTimeout(function () { if (hero) hero.giant(); }, 300); });
