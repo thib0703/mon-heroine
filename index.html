@@ -148,13 +148,15 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 .ccard p{margin:0 0 12px;font-size:16px;line-height:1.4;font-weight:700}
 .ccard .btn{margin:0}
 @keyframes cIn{from{opacity:0;transform:translateY(10px) scale(.96)}}
+.nchips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:2px 0 4px}
+.nchips .chip{padding:8px 14px;min-height:40px}
 </style>
 </head>
 <body>
 <div id="app">
   <section class="screen" id="s-home">
     <div class="top">
-      <div><p class="sub" id="hello">Bonjour !</p><h1 class="title h" id="heroTitle">Nova</h1></div>
+      <div><p class="sub" id="hello">Bonjour !</p><h1 class="title h" id="heroTitle">Ton héroïne</h1></div>
       <div class="row" style="align-items:center">
         <div class="pill" aria-label="Étoiles"><span data-ic="star" style="color:#FFC23D"></span><span id="starCount">0</span></div>
         <button class="iconbtn" id="adultBtn" aria-label="Espace des grands"><span data-ic="lock"></span></button>
@@ -162,7 +164,7 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
     </div>
     <div id="stageWrap">
       <div id="stage" role="img" aria-label="Ton héroïne. Glisse pour la faire tourner, touche-la pour qu'elle saute."></div>
-      <div class="lvl"><div class="name h" id="heroName">Nova</div><div class="rank" id="heroRank"></div><div class="bar"><i id="heroBar" style="width:0%"></i></div></div>
+      <div class="lvl"><div class="name h" id="heroName">Ton héroïne</div><div class="rank" id="heroRank"></div><div class="bar"><i id="heroBar" style="width:0%"></i></div></div>
     </div>
     <div class="bubble" id="bubble" aria-live="polite"></div>
     <button class="toast" id="newMsgToast" style="display:none"><span data-ic="mail"></span><span id="newMsgText"></span></button>
@@ -7972,7 +7974,7 @@ window.QUADWALK = {
   var S;
   try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { S = fresh(); }
   if (DEMO && !S.setupDone) { // demo: ready to play, no limits, never synced with the family
-    S.setupDone = true; S.letterDone = true;
+    S.setupDone = true; S.letterDone = false;
     S.settings = { childName: 'Louna', heroName: 'Nova', code: '0000', minutesPerDay: 0, pace: 'normal', maxStars: 999, voice: true };
   }
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
@@ -8037,8 +8039,9 @@ window.QUADWALK = {
   function renderHome() {
     $('adultBtn').innerHTML = S.sync.role === 'grand' ? ic('team') : ic('lock');
     var p = progress(), t = TIERS[p.l - 1];
-    $('heroTitle').textContent = S.settings.heroName;
-    $('heroName').textContent = S.settings.heroName;
+    var hn = S.letterDone ? S.settings.heroName : 'Ton héroïne';
+    $('heroTitle').textContent = hn;
+    $('heroName').textContent = hn;
     $('hello').textContent = S.settings.childName ? 'Salut ' + S.settings.childName + ' !' : 'Salut !';
     $('heroRank').textContent = 'Niveau ' + p.l + ' · ' + t.name;
     $('heroBar').style.width = p.pct + '%';
@@ -8215,9 +8218,10 @@ window.QUADWALK = {
     $('tierList').innerHTML = TIERS.map(function (t, i) {
       var got = p.l >= t.n, cur = p.l === t.n;
       var right = cur ? '<span style="font-size:13px;font-weight:800;color:#FFE08A">Actuel</span>' : got ? '<span style="color:#7BE0A0" aria-label="Débloqué">' + ic('tick') + '</span>' : (i === p.l ? '<span style="font-size:14px;font-weight:800;color:#CFC9FF">' + (S.stars) + '/' + tierAt(i) + '</span>' : '<span style="color:#A9A2E6" aria-label="Verrouillé">' + ic('lock', 20) + '</span>');
-      return '<div class="tier' + (got ? ' got' : ' locked') + (cur ? ' cur' : '') + '"><div class="num h">' + t.n + '</div><div class="t"><b>' + t.name + '</b><span>' + (got || i === p.l ? t.desc : 'Surprise…') + '</span></div>' + right + '</div>';
+      return '<div class="tier' + (got ? ' got' : ' locked') + (cur ? ' cur' : '') + '"><div class="num h">' + t.n + '</div><div class="t"><b>' + t.name + '</b><span>' + (got || i === p.l ? petDesc(t.desc) : 'Surprise…') + '</span></div>' + right + '</div>';
     }).join('');
   }
+  function petDesc(d) { return S.pet ? d.replace('ton compagnon', S.pet.name) : d; }
   function checkLevelUp() {
     var l = levelFor(S.stars);
     if (l > S.levelSeen) { S.levelSeen = l; unlockForLevel(l); save(); setTimeout(function () { celebrate(l); }, 900); }
@@ -8240,7 +8244,7 @@ window.QUADWALK = {
     openOv(function (p) {
       var m = S.messages.filter(function (x) { return x.level === l; });
       var lc = LEVEL_CARD[l]; if (lc) S.cardsSeen = (S.cardsSeen || []).concat([lc]);
-      p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + t.desc + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
+      p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + petDesc(t.desc) + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
       speak('Nouveau pouvoir ! ' + t.name + '. ' + (l === 5 ? "Tu es une vraie héroïne." : "Grâce à toi, je suis encore plus forte."));
       if (m.length) p.querySelector('#celMsg').addEventListener('click', function () { playMsg(m[0]); });
     }, function () { setTimeout(function () { callBrother(l % 2 ? 'val' : 'thib', { cheer: true }); }, l === 5 ? 7000 : 600); guideLevel(l); });
@@ -8621,9 +8625,10 @@ window.QUADWALK = {
   function hatchNow() {
     if (S.pet) { hatching = false; return; }
     openOv(function (p) {
-      p.innerHTML = '<img class="poster" src="img/oeuf.jpg" alt="" style="max-height:38vh;object-fit:cover"><p class="big h">Ton œuf a éclos !</p><p class="center sub">Une petite boule de poils est née. Elle va grandir avec toi, à chaque pouvoir.</p><label>Comment veux-tu l\'appeler ?<input type="text" id="hatchName" maxlength="16" placeholder="Son nom"></label><button class="btn" id="hatchOk">' + ic('star') + 'C\'est son nom !</button>';
+      p.innerHTML = '<img class="poster" src="img/oeuf.jpg" alt="" style="max-height:38vh;object-fit:cover"><p class="big h">Ton œuf a éclos !</p><p class="center sub">Une petite boule de poils est née. Elle va grandir avec toi, à chaque pouvoir.</p><label>Comment veux-tu l\'appeler ? Touche une idée, ou invente son nom.<input type="text" id="hatchName" maxlength="16" placeholder="Son nom" autocomplete="off"></label>' + nameChips(PET_IDEAS) + '<button class="btn" id="hatchOk">' + ic('star') + 'C\'est son nom !</button>';
+      wireChips(p, p.querySelector('#hatchName'));
       p.querySelector('#hatchOk').addEventListener('click', function () {
-        var n = p.querySelector('#hatchName').value.trim(); if (!n) { p.querySelector('#hatchName').focus(); return; }
+        var n = niceName(p.querySelector('#hatchName').value); if (!n) { p.querySelector('#hatchName').focus(); return; }
         S.pet = { type: 'creature', name: n, since: today() }; save(); hatching = false; closeOv();
         if (hero) hero.setPet(S.pet);
         confetti(); setTimeout(function () { heroSay('Bienvenue ' + n + ' ! On va devenir super fortes, toutes les deux… enfin, tous les trois !'); }, 1500);
@@ -8762,14 +8767,14 @@ window.QUADWALK = {
     durDesaccord: { say: 'Ce n\'est pas grave de ne pas être d\'accord. Demain, tu pourras essayer d\'en reparler calmement. Les vraies amies se réconcilient.', choices: [['Merci', 'fin']] },
     durSais: { say: 'Parfois on se sent mal sans savoir pourquoi. C\'est normal. Ça peut faire du bien d\'en parler à quelqu\'un que tu aimes, ou de respirer avec moi.', choices: [['Respirer avec toi', '@shield'], ['Ça va mieux', 'fin']] },
     peur: { say: 'Avoir peur, ce n\'est pas être faible. Moi aussi j\'ai peur parfois. Tu as peur de quoi ?', choices: [['D\'aller à l\'école', 'peurEcole'], ['De mal faire', 'peurRater'], ['De partir de la maison le matin', 'peurPartir'], ['D\'autre chose', 'peurAutre']] },
-    peurEcole: { say: 'Tu sais quoi ? Une fois à l\'école, souvent ça se passe bien. Le plus dur, c\'est le moment de partir. Et ce moment, on peut le traverser ensemble.', choices: [['On active le Bouclier ?', '@shield'], ['Merci Nova', 'fin']] },
+    peurEcole: { say: 'Tu sais quoi ? Une fois à l\'école, souvent ça se passe bien. Le plus dur, c\'est le moment de partir. Et ce moment, on peut le traverser ensemble.', choices: [['On active le Bouclier ?', '@shield'], ['Merci !', 'fin']] },
     peurRater: { say: 'Personne n\'est parfait, même pas les héroïnes. Ce qui compte, c\'est d\'essayer. Et quand on se trompe, on apprend.', choices: [['D\'accord', 'fin']] },
     peurPartir: { say: 'C\'est normal d\'avoir envie de rester avec ceux qu\'on aime. Ils seront là ce soir, promis. Et moi, je viens avec toi, dans ton cœur.', choices: [['On respire ensemble ?', '@shield'], ['Merci', 'fin']] },
     peurAutre: { say: 'Merci de me le dire. Quand une peur est grosse, c\'est bien d\'en parler à un grand que tu aimes : tes grands frères ou ta maman. Ils sont là pour toi.', choices: [['D\'accord', 'fin']], flag: 'Elle a dit avoir peur de quelque chose (autre)' },
     fiere: { say: 'Trop bien ! Raconte-le dans ton carnet de fierté, tu pourras le relire quand tu veux.', choices: [['J\'y vais !', '@pride']] },
     triste: { say: 'Je suis là. Tu as le droit d\'être triste. C\'est important d\'en parler à quelqu\'un que tu aimes : tes grands frères ou ta maman. Tu veux qu\'on respire ensemble en attendant ?', choices: [['Oui', '@shield'], ['Non, merci', 'fin']], flag: 'Elle a dit qu\'elle était triste' },
     mechant: { say: 'Merci de me l\'avoir dit, c\'est très courageux. Ce n\'est pas de ta faute. C\'est important d\'en parler à un grand : ta maman, tes frères ou la maîtresse. Je le note pour tes grands frères, mais va leur dire aussi, d\'accord ?', choices: [['D\'accord', 'fin']], flag: 'Elle a dit que quelqu\'un a été méchant avec elle — à en parler avec elle' },
-    histoire: { say: function () { return pick(STORIES); }, choices: [['Une autre !', 'histoire'], ['Merci Nova', 'fin']] },
+    histoire: { say: function () { return pick(STORIES); }, choices: [['Une autre !', 'histoire'], ['Merci !', 'fin']] },
     fin: { say: function () { return pick(['Merci d\'avoir parlé avec moi. Je suis toujours là.', 'Tu es une super coéquipière. À bientôt !', 'Je suis fière de toi. On continue l\'aventure ensemble !']); }, choices: [['Parler d\'autre chose', 'start'], ['Au revoir !', '@close']] }
   };
   var STORIES = [
@@ -8995,13 +9000,12 @@ window.QUADWALK = {
     openOv(function (p) {
       p.innerHTML = '<p class="big h">Préparation</p><p class="sub center">À remplir par les grands frères, avant de lui donner le téléphone.</p>' +
         '<label>Prénom de votre sœur<input type="text" id="oName" maxlength="20"></label>' +
-        '<label>Nom de son héroïne<input type="text" id="oHero" maxlength="20" placeholder="Nova"></label>' +
         '<label>Code secret de l\'espace des grands (4 chiffres)<input type="text" id="oCode" inputmode="numeric" maxlength="4"></label>' +
         '<p class="hint" id="oErr"></p><button class="btn" id="oGo">Continuer</button>' + (window.FIREBASE_CONFIG ? '<button class="btn ghost" id="oJoin">Je suis un grand frère : j\'ai un code famille</button>' : '');
       p.querySelector('#oGo').addEventListener('click', function () {
         var c = p.querySelector('#oCode').value.replace(/\D/g, '');
         if (c.length !== 4) { p.querySelector('#oErr').textContent = 'Le code doit faire 4 chiffres.'; return; }
-        S.settings.childName = p.querySelector('#oName').value.trim(); S.settings.heroName = p.querySelector('#oHero').value.trim() || 'Nova'; S.settings.code = c;
+        S.settings.childName = p.querySelector('#oName').value.trim(); S.settings.code = c;
         S.setupDone = true; save(); closeOv(); ready();
       });
       var j = p.querySelector('#oJoin');
@@ -9039,14 +9043,35 @@ window.QUADWALK = {
       p.querySelector('#rLetter').addEventListener('click', function () { closeOv(); letter(); });
     });
   }
+  var HERO_IDEAS = ['Nova', 'Luna', 'Étoile', 'Aurore', 'Stella'];
+  var PET_IDEAS = ['Pixel', 'Plume', 'Mochi', 'Lilas', 'Câlin'];
+  function nameChips(ideas) {
+    return '<div class="nchips">' + ideas.map(function (x) { return '<button class="chip" type="button" data-n="' + esc(x) + '">' + esc(x) + '</button>'; }).join('') + '</div>';
+  }
+  function wireChips(p, input) {
+    p.querySelectorAll('.nchips .chip').forEach(function (c) { c.addEventListener('click', function () { input.value = c.getAttribute('data-n'); p.querySelectorAll('.nchips .chip').forEach(function (x) { x.classList.toggle('on', x === c); }); }); });
+    input.addEventListener('input', function () { p.querySelectorAll('.nchips .chip').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-n') === input.value.trim()); }); });
+  }
+  function niceName(v) { v = String(v || '').trim().replace(/\s+/g, ' '); return v ? v.charAt(0).toUpperCase() + v.slice(1) : ''; }
   function letter() {
     openOv(function (p) {
       var n = S.settings.childName || 'petite sœur';
-      p.innerHTML = '<div class="letter"><h2 class="h">Lettre de mission</h2><p>Chère ' + esc(n) + ',</p><p>Tu as été choisie pour une mission très spéciale : faire grandir une super-héroïne, <b>' + esc(S.settings.heroName) + '</b>.</p><p>Elle devient plus forte à chaque fois que tu fais preuve de courage, d\'effort ou de gentillesse. Pas besoin d\'être parfaite : essayer, c\'est déjà gagner.</p><p>On sera là, nous aussi, dans ton équipe.</p><p>Tes grands frères</p></div><button class="btn" id="lGo">' + ic('star') + 'J\'accepte la mission</button>';
-      p.querySelector('#lGo').addEventListener('click', function () {
-        S.letterDone = true; save(); closeOv(); confetti();
-        setTimeout(function () { heroSay('Bonjour ' + (S.settings.childName || '') + ' ! Je suis ' + S.settings.heroName + '. Ensemble, on va devenir super fortes !'); if (hero) hero.jump(); }, 300);
-      });
+      p.innerHTML = '<div class="letter"><h2 class="h">Lettre de mission</h2><p>Chère ' + esc(n) + ',</p><p>Tu as été choisie pour une mission très spéciale : faire grandir une super-héroïne.</p><p>Elle devient plus forte à chaque fois que tu fais preuve de courage, d\'effort ou de gentillesse. Pas besoin d\'être parfaite : essayer, c\'est déjà gagner.</p><p>Elle n\'a pas encore de nom. C\'est toi qui vas le choisir !</p><p>On sera là, nous aussi, dans ton équipe.</p><p>Tes grands frères</p></div><button class="btn" id="lGo">' + ic('star') + 'J\'accepte la mission</button>';
+      p.querySelector('#lGo').addEventListener('click', function () { nameHero(p); });
+    });
+  }
+  function nameHero(p) {
+    p.innerHTML = '<p class="big h">Ton héroïne</p><p class="sub center">Comment veux-tu l\'appeler ? Touche une idée, ou invente son nom.</p>' +
+      '<label>Son nom<input type="text" id="hName" maxlength="16" placeholder="Son nom" autocomplete="off"></label>' + nameChips(HERO_IDEAS) +
+      '<p class="hint center" id="hErr"></p><button class="btn" id="hOk">' + ic('star') + 'C\'est son nom !</button>';
+    var inp = p.querySelector('#hName'); wireChips(p, inp);
+    speak('Comment veux-tu appeler ton héroïne ?');
+    p.querySelector('#hOk').addEventListener('click', function () {
+      var v = niceName(inp.value);
+      if (!v) { p.querySelector('#hErr').textContent = 'Écris un nom, ou touche une idée.'; inp.focus(); return; }
+      S.settings.heroName = v; S.heroNamed = true; S.letterDone = true; dirtyConfig(); save(); closeOv(); confetti();
+      renderHome();
+      setTimeout(function () { heroSay('Bonjour ' + (S.settings.childName || '') + ' ! Je m\'appelle ' + v + '. J\'adore mon nom ! Ensemble, on va devenir super fortes !'); if (hero) hero.jump(); }, 300);
     });
   }
 
@@ -9060,7 +9085,7 @@ window.QUADWALK = {
       p.innerHTML = '<p class="big h">Mode démo</p><p class="sub center">Niveau ' + lv + ' · ' + S.stars + ' étoiles' + (S.pet ? ' · ' + esc(S.pet.name) : ' · œuf pas encore éclos') + '</p>' +
         '<div style="display:flex;flex-direction:column;gap:8px">' +
         (S.pet ? '' : b('dHatch', ic('star') + 'Faire éclore l\'œuf', '')) +
-        (nx ? b('dNext', ic('star') + 'Passer au niveau ' + nx.n + ' · ' + nx.name, '') : '') +
+        (nx && S.pet ? b('dNext', ic('star') + 'Passer au niveau ' + nx.n + ' · ' + nx.name, '') : '') +
         b('dStar', '+1 étoile (petit pouvoir)') +
         '<p class="sect" style="margin:6px 0 0">Pouvoirs débloqués</p><div style="display:flex;gap:6px;flex-wrap:wrap">' +
         TIERS.slice(0, lv).map(function (t) { return '<button class="btn alt" data-pw="' + t.n + '" style="margin:0;width:auto;flex:1;min-width:48px;padding:10px">' + t.n + '</button>'; }).join('') + '</div>' +
@@ -9073,7 +9098,7 @@ window.QUADWALK = {
       var on = function (id, fn) { var e = p.querySelector('#' + id); if (e) e.addEventListener('click', fn); };
       on('dClose', closeOv);
       on('dHatch', function () { closeOv(); if (S.stars < 1) S.stars = 1; save(); go('home'); setTimeout(hatchNow, 400); });
-      on('dNext', function () { closeOv(); go('home'); S.stars = Math.max(S.stars, tierAt(lv)); if (!S.pet) S.pet = { type: 'creature', name: 'Pixel', since: today() }, hero && hero.setPet(S.pet); save(); setTimeout(checkLevelUp, 300); });
+      on('dNext', function () { closeOv(); go('home'); S.stars = Math.max(S.stars, tierAt(lv)); save(); setTimeout(checkLevelUp, 300); });
       on('dStar', function () { closeOv(); go('home'); S.stars++; save(); if (hero && hero.power && !(hero.busy && hero.busy())) hero.power(lv); heroSay(pick(BRAVO.other)); setTimeout(function () { checkLevelUp(); checkHatch(); }, 300); });
       p.querySelectorAll('[data-pw]').forEach(function (e) { e.addEventListener('click', function () { closeOv(); go('home'); setTimeout(function () { if (hero && hero.power) hero.power(+e.getAttribute('data-pw')); }, 300); }); });
       on('dThib', function () { closeOv(); setTimeout(function () { callBrother('thib'); }, 200); });
@@ -9103,7 +9128,7 @@ window.QUADWALK = {
   // the brothers' heroes load quietly in the background, so their visits start right away
   setTimeout(function () { if (hero && hero.preload) ['thib', 'loup', 'val', 'lion'].forEach(function (n) { hero.preload(n); }); }, 15000);
   startSync();
-  if (!S.setupDone) setup(); else if (!S.letterDone) ready(); else if (S.sync.role === 'grand') setTimeout(openAdult, 400);
+  if (!S.setupDone) setup(); else if (!S.letterDone) (DEMO ? letter() : ready()); else if (S.sync.role === 'grand') setTimeout(openAdult, 400);
 })();
 </script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function(){});</script>
