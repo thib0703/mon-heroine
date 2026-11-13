@@ -7416,6 +7416,8 @@ window.QUADWALK = {
       var g2 = bx.createLinearGradient(0, 0, 0, 256);
       g2.addColorStop(0, mixHex(NIGHT[0], DAY[0], dayMix)); g2.addColorStop(0.55, mixHex(NIGHT[1], DAY[1], dayMix)); g2.addColorStop(1, mixHex(NIGHT[2], DAY[2], dayMix));
       bx.fillStyle = g2; bx.fillRect(0, 0, 4, 256); bgTex.needsUpdate = true;
+      // the sky is the frame's CSS background now: paint the day/night change there
+      var wr = stage.parentNode; if (wr && wr.style) wr.style.background = dayMix < 0.004 ? '' : 'linear-gradient(180deg,' + mixHex(NIGHT[0], DAY[0], dayMix) + ' 0%,' + mixHex(NIGHT[1], DAY[1], dayMix) + ' 55%,' + mixHex(NIGHT[2], DAY[2], dayMix) + ' 100%)';
       scene.fog.color.set(mixHex('#231C66', '#A8D8FF', dayMix));
     }
   }
