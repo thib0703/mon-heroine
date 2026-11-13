@@ -134,6 +134,20 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 .acard .al b{font-size:13px}
 .acard .al em{font-style:normal;font-size:38px;font-weight:800;color:#FFE08A;line-height:1}
 .acard .anew{position:absolute;top:6px;left:6px;background:#FFC23D;color:#1B1650;font-style:normal;font-weight:800;font-size:11px;padding:3px 7px;border-radius:999px}
+.coach{position:fixed;inset:0;z-index:60;-webkit-tap-highlight-color:transparent}
+.coach.soft{pointer-events:none}
+.coach .dim{position:absolute;inset:0;background:rgba(8,5,35,.74)}
+.coach .ring{position:fixed;border-radius:18px;box-shadow:0 0 0 9999px rgba(8,5,35,.72),0 0 0 3px #FFC23D,0 0 26px 8px rgba(255,194,61,.55);pointer-events:none;animation:ringP 1.6s ease-in-out infinite}
+.coach.soft .ring{box-shadow:0 0 0 3px #FFC23D,0 0 26px 8px rgba(255,194,61,.55)}
+@keyframes ringP{50%{transform:scale(1.025)}}
+.ccard{position:fixed;left:14px;right:14px;max-width:440px;margin:0 auto;background:linear-gradient(160deg,#3B2CA6,#1E1760);border:2px solid #FFC23D;border-radius:20px;padding:12px 16px 14px;color:#fff;box-shadow:0 14px 40px rgba(0,0,0,.55);pointer-events:auto;animation:cIn .35s cubic-bezier(.2,1.4,.4,1)}
+.ccard .who{display:flex;align-items:center;gap:8px;font-size:13px;color:#FFE08A;margin-bottom:6px}
+.ccard .who i{margin-left:auto;font-style:normal;color:#CFC9FF;font-weight:700}
+.ccard .av{width:24px;height:24px;border-radius:50%;background:#FFC23D;color:#1B1650;display:grid;place-items:center;flex:none}
+.ccard .av svg{width:15px;height:15px}
+.ccard p{margin:0 0 12px;font-size:16px;line-height:1.4;font-weight:700}
+.ccard .btn{margin:0}
+@keyframes cIn{from{opacity:0;transform:translateY(10px) scale(.96)}}
 </style>
 </head>
 <body>
@@ -8015,6 +8029,7 @@ window.QUADWALK = {
     if (name === 'pride') renderPride();
     if (name === 'team') renderTeam();
     if (name === 'locked') heroSay("J'ai besoin de recharger mes pouvoirs. On se retrouve demain ! Le Bouclier de courage reste là si tu en as besoin.", $('lockedBubble'));
+    guideFor(name);
   }
   document.querySelectorAll('#nav button').forEach(function (b) { b.addEventListener('click', function () { go(b.getAttribute('data-go')); }); });
 
@@ -8033,6 +8048,7 @@ window.QUADWALK = {
     $('newMsgToast').style.display = n ? '' : 'none';
     $('newMsgText').textContent = n === 1 ? 'Un message de ' + newMessages()[0].from + " t'attend !" : n + ' messages de tes frères t\'attendent !';
     $('msgDot').style.display = n ? '' : 'none';
+    if (n && S.sync.role !== 'grand') guideMsg();
   }
   $('newMsgToast').addEventListener('click', function () { go('team'); });
   $('goMorning').addEventListener('click', function () { go('missions'); });
@@ -8183,6 +8199,7 @@ window.QUADWALK = {
   function morningPoster() {
     // once a day, the family poster greets her when the app opens
     var k = new Date().toDateString();
+    if (tipOn) return;
     if (S.posterDay === k || !S.setupDone || !S.letterDone || S.sync.role === 'grand' || $('ov').classList.contains('on')) return;
     S.posterDay = k; save();
     var lv = levelFor(S.stars), pool = CARDS.filter(function (c) { return c.l === lv; }).concat(lv < 5 ? [cardById('histoire_oeuf'), cardById('bro_thib'), cardById('bro_val')] : [cardById('famille'), cardById('famille')]);
@@ -8226,7 +8243,7 @@ window.QUADWALK = {
       p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + t.desc + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
       speak('Nouveau pouvoir ! ' + t.name + '. ' + (l === 5 ? "Tu es une vraie héroïne." : "Grâce à toi, je suis encore plus forte."));
       if (m.length) p.querySelector('#celMsg').addEventListener('click', function () { playMsg(m[0]); });
-    }, function () { setTimeout(function () { callBrother(l % 2 ? 'val' : 'thib', { cheer: true }); }, l === 5 ? 7000 : 600); });
+    }, function () { setTimeout(function () { callBrother(l % 2 ? 'val' : 'thib', { cheer: true }); }, l === 5 ? 7000 : 600); guideLevel(l); });
     if (l === 5 && hero) setTimeout(function () { hero.giant(); }, 2500);
   }
   function confetti() {
@@ -8297,6 +8314,141 @@ window.QUADWALK = {
     if (document.hidden) { save(); if (hero) hero.stop(); }
     else { if (!isLocked() && current === 'locked') go('home'); else if (isLocked()) go('locked'); else if (current === 'home') go('home'); }
   });
+
+  // ---------- Guide : chaque nouveauté est expliquée la première fois ----------
+  // A halo shows the right button and the heroine explains it out loud. Each tip is shown once per phone
+  // (S.tips); « Revoir les explications » in the adult space shows them all again.
+  if (!S.tips) S.tips = {};
+  var tipQ = [], tipOn = false, tipTimer = null;
+  function tip(id, steps, o) {
+    o = o || {};
+    steps = steps.filter(Boolean);
+    if (!steps.length || S.tips[id] || tipQ.some(function (q) { return q.id === id; })) return;
+    var q = { id: id, steps: steps, o: o, ready: false };
+    tipQ.push(q);
+    setTimeout(function () { q.ready = true; tipLater(50); }, o.delay || 900);
+  }
+  function tipLater(ms) { clearTimeout(tipTimer); tipTimer = setTimeout(tipPump, ms); }
+  function tipPump() {
+    if (!tipQ.length || tipOn) return;
+    var q = tipQ[0], ovOn = $('ov').classList.contains('on');
+    // a tip tied to a screen or to the adult space is dropped if the child moved on: it comes back next time
+    if ((q.o.screen && current !== q.o.screen) || (q.o.over && !ovOn)) { tipQ.shift(); return tipLater(200); }
+    var busy = !q.ready || !S.setupDone || !S.letterDone || celebrating || hatching ||
+      (!q.o.over && ovOn) || (!q.o.soft && hero && hero.mentorActive && hero.mentorActive());
+    if (busy) return tipLater(700);
+    tipQ.shift(); tipShow(q);
+  }
+  function tipShow(q) {
+    tipOn = true;
+    var i = 0, root = document.createElement('div');
+    root.className = 'coach' + (q.o.soft ? ' soft' : '');
+    document.body.appendChild(root);
+    function target(s) {
+      var e = typeof s.t === 'function' ? s.t() : s.t ? document.querySelector(s.t) : null;
+      if (!e) return null;
+      var r = e.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      if (r.top < 50 || r.bottom > innerHeight - 30) { try { e.scrollIntoView({ block: 'center' }); } catch (x) {} r = e.getBoundingClientRect(); }
+      return r;
+    }
+    function draw() {
+      var s = q.steps[i], r = target(s), last = i === q.steps.length - 1, pad = 7;
+      var who = q.o.adult ? 'Guide des grands' : (esc(S.settings.heroName || 'Nova') + ' t\'explique');
+      root.innerHTML = (r ? '<div class="ring" style="left:' + (r.left - pad) + 'px;top:' + (r.top - pad) + 'px;width:' + (r.width + pad * 2) + 'px;height:' + (r.height + pad * 2) + 'px"></div>' : (q.o.soft ? '' : '<div class="dim"></div>')) +
+        '<div class="ccard" role="dialog" aria-live="polite"><div class="who"><span class="av">' + ic('star') + '</span><b>' + who + '</b>' + (q.steps.length > 1 ? '<i>' + (i + 1) + ' / ' + q.steps.length + '</i>' : '') + '</div>' +
+        '<p>' + s.x + '</p><button class="btn" id="cNext">' + (last ? (q.o.ok || 'J\'ai compris !') : 'Suivant') + '</button></div>';
+      var c = root.querySelector('.ccard'), ch = c.offsetHeight, top;
+      if (!r) top = Math.max(16, (innerHeight - ch) / 2);
+      else if (r.bottom + pad + 14 + ch < innerHeight - 12) top = r.bottom + pad + 14;
+      else if (r.top - pad - 14 - ch > 12) top = r.top - pad - 14 - ch;
+      else top = innerHeight - ch - 16;
+      c.style.top = top + 'px';
+      root.querySelector('#cNext').addEventListener('click', function (e) { e.stopPropagation(); next(); });
+      if (!q.o.adult && !q.o.mute) speak(s.x.replace(/<[^>]+>/g, ''));
+    }
+    function next() { i++; if (i < q.steps.length) draw(); else end(); }
+    function end() {
+      S.tips[q.id] = 1; saveLocal(); root.remove(); tipOn = false;
+      if (!q.o.mute) { try { speechSynthesis && speechSynthesis.cancel(); } catch (e) {} }
+      if (q.o.then) q.o.then();
+      tipLater(600);
+    }
+    if (!q.o.soft) root.addEventListener('click', function (e) { if (!e.target.closest('.ccard')) next(); });
+    draw();
+  }
+  function heroN() { return esc(S.settings.heroName || 'Nova'); }
+  function petN() { return S.pet ? esc(S.pet.name) : 'ton compagnon'; }
+  function guideFor(name) {
+    if (S.sync.role === 'grand' && name !== 'home') return;
+    if (name === 'home') tip('home', [
+      { t: '#stage', x: 'Moi, c\'est ' + heroN() + ', ton héroïne ! Touche-moi pour me faire sauter, et glisse ton doigt pour me faire tourner.' },
+      !S.pet && { t: '#stage', x: 'Tu vois l\'œuf magique à côté de moi ? Il va éclore dès que tu gagnes ta première étoile !' },
+      { t: '#s-home .pill', x: 'Ici, ce sont tes étoiles. Chaque mission réussie t\'en donne une. Avec assez d\'étoiles, je gagne un nouveau pouvoir !' },
+      { t: '#goMorning', x: 'Le matin, avant l\'école, appuie ici : c\'est ta mission du matin.' },
+      { t: '#goShield', x: 'Si tu as peur, si tu es triste ou si c\'est difficile, appuie sur le Bouclier de courage. Je serai là avec toi.' },
+      { t: '#goTalk', x: 'Ici, tu peux me raconter ta journée. Et à côté, un nouveau défi t\'attend chaque jour !' },
+      { t: '#nav', x: 'En bas, il y a tes missions, tes pouvoirs, ton carnet de fierté et ton équipe. Va les découvrir !' },
+      { t: '#adultBtn', x: 'Le cadenas, c\'est l\'espace des grands, pour tes frères. Il est fermé par un code secret.' }
+    ], { screen: 'home', delay: 2600, ok: 'C\'est parti !' });
+    if (name === 'missions') tip('missions', [
+      { t: '#morningList', x: 'Le matin, touche chaque mission quand tu l\'as faite. Chacune te donne une étoile !' },
+      { t: '#missionList', x: 'Et voici les missions du jour : du courage, de la gentillesse, des efforts.' },
+      { t: '#inventMission', x: 'Tu peux même inventer ta propre mission !' },
+      { t: '#s-missions .pill', x: 'Ici, tu vois les étoiles gagnées aujourd\'hui. Pas de mission ratée : demain est un nouveau jour.' }
+    ], { screen: 'missions' });
+    if (name === 'powers') tip('powers', [
+      { t: '#tierList', x: 'Voici les 5 pouvoirs. Celui en couleur, c\'est ton niveau. Les suivants restent une surprise !' },
+      { t: '#album', x: 'Tes cartes d\'aventure ! Tu en gagnes de nouvelles à chaque pouvoir. Touche une carte pour la voir en grand. Les points d\'interrogation, c\'est pour plus tard…' }
+    ], { screen: 'powers' });
+    if (name === 'pride') tip('pride', [
+      { t: '#qualities', x: 'Choisis ce que tu aimes chez toi. Pas ce qui se voit dans le miroir : ce que tu es !' },
+      { t: '#prideText', x: 'Et chaque jour, écris une chose dont tu es fière. Les jours où tu doutes, relis ton carnet.' }
+    ], { screen: 'pride' });
+    if (name === 'team') tip('team', [
+      { t: '#petBox', x: S.pet ? 'Voici ' + petN() + ', ton compagnon. Il change de forme à chaque nouveau pouvoir.' : 'Ton œuf magique est ici. Gagne ta première étoile pour le faire éclore !' },
+      { t: '#heroBros', x: 'Tes grands frères, Thib et Val ! Appuie sur « Appeler » : ils viennent te voir avec leur animal.' },
+      { t: '#msgList', x: 'Ici arrivent les messages que tes frères t\'enregistrent. Parfois, c\'est une surprise !' }
+    ], { screen: 'team' });
+    if (name === 'locked') tip('locked', [
+      { t: '#lockedShield', x: 'Pour aujourd\'hui, c\'est fini : je recharge mes pouvoirs. Le Bouclier de courage reste là si tu en as besoin. À demain !' }
+    ], { screen: 'locked', delay: 1800 });
+  }
+  function guideHatch() {
+    tip('hatch', [
+      { t: '#stage', x: 'Voici ' + petN() + ' ! Touche-le pour lui faire un câlin. Il grandira à chaque nouveau pouvoir.' },
+      { t: '#nav button[data-go="team"]', x: 'Tu le retrouves aussi dans ton équipe, avec tes grands frères.' }
+    ], { screen: 'home', delay: 3800 });
+  }
+  function guideLevel(l) {
+    if (l < 2) return;
+    var t = TIERS[l - 1];
+    tip('level' + l, [
+      { t: '#stage', x: 'Nouveau pouvoir : ' + t.name + ' ! Regarde ma nouvelle tenue… et ' + petN() + ' a changé de forme, lui aussi.' },
+      l === 5 && { t: '#stage', x: 'Un secret : touche-moi 4 fois de suite, et ' + petN() + ' devient immense pour te protéger !' },
+      { t: '#nav button[data-go="powers"]', x: 'De nouvelles cartes d\'aventure t\'attendent dans Pouvoirs. Va vite les voir !' }
+    ], { screen: 'home', delay: 2500 });
+  }
+  function guideBro() {
+    tip('bro', [{ t: '#stage', x: 'Ton grand frère est venu te voir ! Touche-le : il va te montrer son pouvoir.' }], { soft: true, mute: true, delay: 4200, ok: 'D\'accord !' });
+  }
+  function guideMsg() {
+    tip('msg', [{ t: '#newMsgToast', x: 'Un message de ton frère est arrivé ! Appuie ici pour l\'écouter.' }], { screen: 'home', delay: 1500 });
+  }
+  function guideAdult() {
+    var g = S.sync.role === 'grand';
+    tip(g ? 'adultG' : 'adult', [
+      { t: '#todayCard', x: g ? 'Ici, vous suivez la journée de votre sœur : missions cochées, étoiles gagnées, temps de jeu.' : 'Le résumé de sa journée : missions cochées, étoiles gagnées, temps de jeu. En dessous, ses semaines.' },
+      { t: '#recBtn', x: 'Les messages vocaux : choisissez quand il se débloque (à un pouvoir précis ou en surprise), appuyez sur le micro et parlez (1 minute). Après le premier message d\'un frère, son héros 3D vient la voir.' },
+      { t: '#syncBox', x: g ? 'Votre téléphone est relié au sien : messages et réglages arrivent chez elle tout seuls.' : 'Le code famille relie vos téléphones : sur vos iPhone, choisissez « Je suis un grand frère » et entrez ce code.' },
+      { t: '#sMin', x: 'Les réglages : temps de jeu par jour, étoiles maximum, rythme de progression, voix de l\'héroïne et code secret. Pensez à « Enregistrer les réglages ».' },
+      { t: '#misAdm', x: 'Les missions du jour : ajoutez-en, retirez-en. Celles qu\'elle invente apparaissent ici aussi.' },
+      { t: '#tipsBtn', x: 'Ces explications reviennent toutes avec ce bouton, pour elle comme pour vous.' }
+    ], { over: true, adult: true, delay: 700, ok: 'Compris' });
+  }
+  function guideDemo() {
+    tip('demo', [{ t: '#demoBtn', x: 'Mode démo : ce bouton jaune déclenche tout (œuf, niveaux, visites, dragon…). Les explications apparaissent comme pour Louna, à chaque nouveauté.' }], { screen: 'home', delay: 2200, mute: true, ok: 'Super' });
+  }
 
   // ---------- Overlay ----------
   var ovClose = null;
@@ -8388,9 +8540,11 @@ window.QUADWALK = {
         '<p class="sect">Missions du jour</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><div id="misAdm" style="display:flex;flex-direction:column;gap:8px"></div>' +
           '<label>Nouvelle mission<input type="text" id="nmLabel" maxlength="50" placeholder="J\'ai…"></label><select id="nmTag"><option>Courage</option><option>Gentillesse</option><option>Effort</option></select><button class="btn alt" id="nmAdd">' + ic('plus') + 'Ajouter la mission</button></div>' +
         '<p class="sect">Temps de jeu</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><button class="btn alt" id="addTime">Redonner 10 minutes aujourd\'hui</button></div>' +
-        '<p class="sect">Remise à zéro</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><p class="hint" style="margin:0">Efface tout sur ce téléphone (utile après un essai). Les données en ligne ne sont pas touchées.</p><button class="btn ghost" id="resetBtn">Tout effacer sur ce téléphone</button></div>' +
+        '<p class="sect">Remise à zéro</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><p class="hint" style="margin:0">Efface tout sur ce téléphone (utile après un essai). Les données en ligne ne sont pas touchées.</p><button class="btn ghost" id="resetBtn">Tout effacer sur ce téléphone</button><button class="btn ghost" id="tipsBtn">Revoir les explications de l\'appli</button></div>' +
         (S.sync.role === 'grand' ? '<button class="btn ghost" data-close>Voir un aperçu de son appli</button><p class="hint center">Sur ton téléphone, l\'aperçu ne change rien chez elle.</p>' : '<button class="btn ghost" data-close>Fermer</button>');
       p.querySelector('#sPace').value = st.pace;
+      p.querySelector('#tipsBtn').addEventListener('click', function () { S.tips = {}; saveLocal(); this.textContent = 'C\'est noté : elles vont réapparaître'; });
+      guideAdult();
       p.querySelector('#resetBtn').addEventListener('click', function () {
         var btn = this;
         if (btn.dataset.sure) { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); return; }
@@ -8474,12 +8628,13 @@ window.QUADWALK = {
         if (hero) hero.setPet(S.pet);
         confetti(); setTimeout(function () { heroSay('Bienvenue ' + n + ' ! On va devenir super fortes, toutes les deux… enfin, tous les trois !'); }, 1500);
         if ($('petBox')) renderTeamPet();
+        guideHatch();
       });
     }, function () { hatching = false; });
     speak('Oh ! Ton œuf bouge… il éclot !');
   }
   var hatching = false;
-  function checkHatch() { if (!S.pet && S.stars >= 1 && !hatching && !$('ov').classList.contains('on')) { hatching = true; setTimeout(hatchNow, 1200); } }
+  function checkHatch() { if (tipOn) { setTimeout(checkHatch, 2500); return; } if (!S.pet && S.stars >= 1 && !hatching && !$('ov').classList.contains('on')) { hatching = true; setTimeout(hatchNow, 1200); } }
   function renderTeamPet() {
     var box = $('petBox');
     if (!S.pet) {
@@ -8515,7 +8670,7 @@ window.QUADWALK = {
   function callBrother(who, o) {
     o = o || {};
     if (!hero || !hero.mentor || broBusy) return;
-    broBusy = true; go('home');
+    broBusy = true; go('home'); guideBro();
     var L = broLines(who), a = o.cheer ? pick(L.c) : pick(L.a), b = pick(L.b), bye = pick(L.bye);
     setTimeout(function () {
       hero.mentor(who, { dur: o.cheer ? 9.5 : 11.5, cheer: !!o.cheer, say: function (i) { broSay(who, i === 0 ? a : i === 1 ? b : bye); }, done: function () { broBusy = false; } });
@@ -8533,6 +8688,7 @@ window.QUADWALK = {
   function maybeBroVisit() {
     // once a day, one of the brothers drops by on the home screen
     var k = new Date().toDateString();
+    if (tipOn) return;
     if (S.broVisit === k || !hero || !hero.mentor || celebrating || $('ov').classList.contains('on')) return;
     S.broVisit = k; save();
     callBrother(Math.random() < 0.5 ? 'thib' : 'val');
@@ -8930,9 +9086,9 @@ window.QUADWALK = {
   }
   if (DEMO) {
     var db_ = document.createElement('button');
-    db_.textContent = 'DÉMO'; db_.setAttribute('aria-label', 'Ouvrir le panneau de démo');
+    db_.textContent = 'DÉMO'; db_.id = 'demoBtn'; db_.setAttribute('aria-label', 'Ouvrir le panneau de démo');
     db_.style.cssText = 'position:fixed;right:12px;bottom:92px;z-index:15;background:#FFC23D;color:#1B1650;border:0;border-radius:999px;padding:10px 16px;font:800 14px system-ui;box-shadow:0 6px 18px rgba(0,0,0,.45)';
-    db_.addEventListener('click', demoPanel); document.body.appendChild(db_);
+    db_.addEventListener('click', demoPanel); document.body.appendChild(db_); guideDemo();
   }
   paintIcons();
   var tapN = 0;
