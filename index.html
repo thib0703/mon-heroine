@@ -8163,8 +8163,9 @@ window.QUADWALK = {
     { id: 'bro_val', t: 'Val, le Protecteur', l: 1 },
     { id: 'oeuf', t: "L'œuf mystérieux", l: 1 },
     { id: 'histoire_oeuf', t: 'Les grands frères veillent', l: 1 },
-    { id: 'niv1', t: 'Niveau 1 · Étincelle', l: 1 },
     { id: 'histoire_entrainement', t: 'Premier entraînement', l: 2 },
+    // la tenue violette à éclair est celle du niveau 2 : la carte ne se débloque qu'à ce niveau
+    { id: 'niv1', t: 'Ta tenue Éclair', l: 2 },
     { id: 'niv3', t: 'Niveau 3 · Cœur des eaux', l: 3 },
     { id: 'histoire_bouclier', t: 'Le bouclier de cristal', l: 3 },
     { id: 'niv4', t: 'Niveau 4 · Terre et feu', l: 4 },
@@ -8174,7 +8175,7 @@ window.QUADWALK = {
     { id: 'histoire_finale', t: 'Les trois Gardiens', l: 5 },
     { id: 'famille', t: 'La famille des Gardiens', l: 5 }
   ];
-  var LEVEL_CARD = { 1: 'niv1', 2: 'histoire_entrainement', 3: 'niv3', 4: 'niv4', 5: 'niv5' };
+  var LEVEL_CARD = { 2: 'niv1', 3: 'niv3', 4: 'niv4', 5: 'niv5' };
   function cardById(id) { return CARDS.filter(function (c) { return c.id === id; })[0]; }
   function showPoster(id, extra) {
     var c = cardById(id); if (!c) return;
