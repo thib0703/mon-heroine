@@ -7444,6 +7444,33 @@ window.QUADWALK = {
   }
   function killMesh(m) { scene.remove(m); m.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
 
+  var SKY_TEX = {};
+  function skyTex(kind) {
+    if (SKY_TEX[kind]) return SKY_TEX[kind];
+    var c = document.createElement('canvas'); c.width = c.height = 256; var g = c.getContext('2d'), R = 128;
+    if (kind === 'sun') {
+      var gl = g.createRadialGradient(R, R, 20, R, R, R); gl.addColorStop(0, 'rgba(255,236,150,0.95)'); gl.addColorStop(0.35, 'rgba(255,200,80,0.45)'); gl.addColorStop(1, 'rgba(255,170,40,0)');
+      g.fillStyle = gl; g.fillRect(0, 0, 256, 256);
+      g.save(); g.translate(R, R); g.fillStyle = 'rgba(255,214,110,0.75)';
+      for (var i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.beginPath(); g.moveTo(-9, -50); g.lineTo(0, -112); g.lineTo(9, -50); g.closePath(); g.fill(); }
+      g.restore();
+      var d = g.createRadialGradient(R - 12, R - 12, 4, R, R, 48); d.addColorStop(0, '#FFFFF4'); d.addColorStop(0.55, '#FFE27A'); d.addColorStop(1, '#FFB21E');
+      g.fillStyle = d; g.beginPath(); g.arc(R, R, 46, 0, Math.PI * 2); g.fill();
+    } else {
+      var gm = g.createRadialGradient(R, R, 30, R, R, R); gm.addColorStop(0, 'rgba(210,200,255,0.55)'); gm.addColorStop(0.5, 'rgba(160,140,255,0.18)'); gm.addColorStop(1, 'rgba(120,100,255,0)');
+      g.fillStyle = gm; g.fillRect(0, 0, 256, 256);
+      var m = document.createElement('canvas'); m.width = m.height = 256; var h = m.getContext('2d');
+      var md = h.createRadialGradient(R - 14, R - 10, 6, R, R, 52); md.addColorStop(0, '#FFFFFF'); md.addColorStop(1, '#D9D2FF');
+      h.fillStyle = md; h.beginPath(); h.arc(R, R, 50, 0, Math.PI * 2); h.fill();
+      h.globalCompositeOperation = 'destination-out'; h.beginPath(); h.arc(R + 26, R - 16, 44, 0, Math.PI * 2); h.fill();
+      g.drawImage(m, 0, 0);
+    }
+    var tx = new T.CanvasTexture(c); tx.colorSpace = T.SRGBColorSpace; SKY_TEX[kind] = tx; return tx;
+  }
+  function skySprite(kind) {
+    var sp = new T.Sprite(new T.SpriteMaterial({ map: skyTex(kind), transparent: true, opacity: 0, depthWrite: false, fog: false }));
+    sp.scale.set(1.25, 1.25, 1); sp.renderOrder = -1; scene.add(sp); return sp;
+  }
   var POWERS = {
     // 1 · Étincelle: switches the lights off, then lights them again with a snap
     1: function () { return addFx({ dur: 4.6, step: function (t, dt, f) {
@@ -7502,7 +7529,17 @@ window.QUADWALK = {
       if (once(f, 'tp2', 4.6)) { flashBoost = 0.8; for (var s3 = 0; s3 < 24; s3++) { var a3 = s3 / 24 * Math.PI * 2; emit({ pos: new V(0, 0.1, 0), vel: new V(Math.cos(a3) * 1.8, 0.1, Math.sin(a3) * 1.8), life: 0.6, s0: 0.08, s1: 0.03, cols: [0xFFFFFF, 0xB45CFF], drag: 2 }); } }
     }, end: function () { rocks.forEach(killMesh); } }); },
     // 5 · Maîtresse du temps: a golden clock appears, time stops, then night turns to day and back
-    5: function () { var clockG = null, hands = []; return addFx({ dur: 7.4, step: function (t, dt, f) {
+    5: function () { var clockG = null, hands = [], sun = null, moon = null; return addFx({ dur: 8.6, step: function (t, dt, f) {
+      // a sun rises and brings the day, then a moon rises and brings the night back
+      if (once(f, 'sky', 0)) { sun = skySprite('sun'); moon = skySprite('moon'); }
+      var ease = function (k) { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
+      var su = t < 5.0 ? ease((t - 2.7) / 1.1) : 1 - ease((t - 5.0) / 1.0);
+      sun.position.set(-0.95 + (1 - su) * 0.35, 0.3 + su * 1.35, -1.4); sun.material.opacity = Math.min(1, su * 1.6); sun.material.rotation = t * 0.35;
+      var sp = 1 + Math.sin(t * 5) * 0.04; sun.scale.set(1.25 * sp, 1.25 * sp, 1);
+      var mo = t < 7.6 ? ease((t - 5.2) / 1.1) : 1 - ease((t - 7.6) / 0.9);
+      moon.position.set(-0.95 + (1 - mo) * 0.35, 0.3 + mo * 1.35, -1.4); moon.material.opacity = Math.min(1, mo * 1.6);
+      if (once(f, 'moonstars', 5.6)) for (var ms = 0; ms < 26; ms++) emit({ pos: new V(rnd(-1.6, 1.6), rnd(1.0, 2.6), rnd(-1.8, -0.8)), vel: new V(0, 0, 0), life: rnd(1.6, 2.6), s0: 0.03, s1: 0.07, cols: [0xFFFFFF, 0xDCD4FF], flick: 1 });
+
       if (once(f, 'clock', 0)) {
         clockG = new T.Group(); clockG.position.set(0, 1.05, -0.45);
         var gold = new T.MeshStandardMaterial({ color: 0xFFD27A, emissive: 0xFFB020, emissiveIntensity: 0.8, metalness: 0.6, roughness: 0.3, transparent: true });
@@ -7512,7 +7549,7 @@ window.QUADWALK = {
         clockG.scale.setScalar(0.001); scene.add(clockG);
       }
       if (clockG) {
-        var sc = t < 0.6 ? (function (e) { var c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2); })(t / 0.6) : t > 6.8 ? Math.max(0.001, 1 - (t - 6.8) / 0.6) : 1;
+        var sc = t < 0.6 ? (function (e) { var c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(e - 1, 3) + c1 * Math.pow(e - 1, 2); })(t / 0.6) : t > 7.9 ? Math.max(0.001, 1 - (t - 7.9) / 0.6) : 1;
         clockG.scale.setScalar(sc); clockG.rotation.y = Math.sin(t * 0.8) * 0.15;
         var spd = t < 1.2 ? 6 : t < 2.8 ? 0.2 : t < 5.6 ? 14 : 3;
         hands[0].rotation.z -= dt * spd * 0.25; hands[1].rotation.z -= dt * spd;
@@ -7520,9 +7557,9 @@ window.QUADWALK = {
       // time stops: everything around her freezes for a moment
       timeScale = (t > 1.2 && t < 2.8) ? 0.03 : 1;
       if (once(f, 'freeze', 1.2)) { flashBoost = 0.7; for (var s = 0; s < 30; s++) emit({ pos: new V(), orbit: { a: rnd(0, 6.3), w: 0.15, r: rnd(0.5, 1.3), y: rnd(0.1, 2.2), vy: 0 }, life: 1.6, s0: 0.05, s1: 0.05, cols: [0xFFE7A8, 0xFFFFFF] }); }
-      if (once(f, 'day', 3.0)) { dayTarget = 1; for (var s2 = 0; s2 < 24; s2++) emit({ pos: new V(rnd(-2, 2), rnd(2.4, 3.4), rnd(-2.5, -1)), vel: new V(0, -0.2, 0), life: 2, s0: 0.2, s1: 0.4, cols: [0xFFF2C8, 0xFFD27A], alpha: 0.5 }); }
-      if (once(f, 'night', 5.4)) dayTarget = 0;
-    }, end: function () { if (clockG) killMesh(clockG); timeScale = 1; dayTarget = 0; } }); }
+      if (once(f, 'day', 3.1)) { dayTarget = 1; for (var s2 = 0; s2 < 24; s2++) emit({ pos: new V(rnd(-1.4, 1.4), rnd(1.3, 2.1), rnd(-2.0, -1)), vel: new V(0, -0.2, 0), life: 2, s0: 0.2, s1: 0.4, cols: [0xFFF2C8, 0xFFD27A], alpha: 0.5 }); }
+      if (once(f, 'night', 5.6)) dayTarget = 0;
+    }, end: function () { if (clockG) killMesh(clockG); [sun, moon].forEach(function (m) { if (m) { scene.remove(m); m.material.dispose(); } }); timeScale = 1; dayTarget = 0; } }); }
   };
   var timeScale = 1, tpT = -1;
   function power(n, withGesture) {
@@ -8132,7 +8169,7 @@ window.QUADWALK = {
     2: ['Éclair ! Personne ne va plus vite que moi !', 'Zip ! La super vitesse !'],
     3: ['Cœur des eaux ! L\'eau devient glace !', 'Regarde, des cristaux de glace !'],
     4: ['Force de la terre et du feu !', 'La terre tremble… et pouf, téléportation !'],
-    5: ['Maîtresse du temps ! J\'arrête le temps !', 'Le jour ou la nuit ? C\'est moi qui choisis !']
+    5: ['Maîtresse du temps ! Le soleil se lève… puis la lune !', 'Le jour ou la nuit ? C\'est moi qui choisis !']
   };
   var pwUntil = 0, pwShown = 0;
   function drawPowerBar(lv) {
@@ -8151,7 +8188,7 @@ window.QUADWALK = {
     pwShown = lv;
     if (lv >= 1) setTimeout(function () { if (current === 'home') tip('pw', [{ t: '#pwBar', x: function () { return 'Ce sont mes pouvoirs ! Touche un rond et je l\'utilise. À chaque niveau, un nouveau pouvoir apparaît ici.'; } }], { screen: 'home', delay: 400, ok: 'Super !' }); }, 600);
   }
-  var PW_DUR = { 1: 4.6, 2: 3.6, 3: 4.6, 4: 5.6, 5: 7.4 };
+  var PW_DUR = { 1: 4.6, 2: 3.6, 3: 4.6, 4: 5.6, 5: 8.6 };
   function usePower(n, b) {
     if (Date.now() < pwUntil || celebrating || (hero.busy && hero.busy()) || (hero.mentorActive && hero.mentorActive())) return;
     pwUntil = Date.now() + Math.min(3, PW_DUR[n] || 3) * 1000;
