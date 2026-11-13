@@ -185,6 +185,13 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 .night-card .mission.done{background:#FFC23D;color:#1B1650}
 .night-count{display:flex;gap:4px;flex-wrap:wrap;align-items:center;font-size:13px;font-weight:800;color:#FFE08A}
 .night-count i{width:14px;height:14px;border-radius:999px;box-shadow:inset -5px 2px 0 0 #FFE08A;transform:rotate(-20deg)}
+.sr-row{display:flex;flex-direction:column;gap:6px;background:#1E1760;border-radius:16px;padding:12px}
+.sr-row .l1{display:flex;gap:8px;align-items:center}
+.sr-row .l1 select{flex:1;min-width:0}
+.sr-row .l1 input[type=number]{width:64px;flex-shrink:0}
+.sr-row .l2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#A9A2E6}
+.sr-row .l2 .go{color:#FFC23D}.sr-row .l2 .ok{color:#7BE0A0}
+.sr-del{background:none;border:none;color:#FF9A8A;font-weight:800;font-size:13px;padding:4px}
 </style>
 </head>
 <body>
@@ -8005,7 +8012,7 @@ window.QUADWALK = {
       settings: { childName: '', heroName: 'Nova', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: true, nightOn: true, nightLabel: '' },
       stars: 0, days: {}, missions: DEFAULT_MISSIONS.slice(), pride: [], messages: [], levelSeen: 1, firstDay: today(),
       pet: null, allies: [], qualities: [], flags: [], riddles: {},
-      rewards: {}, rewardsGiven: {}, surprise: null, surpriseSeen: ''
+      rewards: {}, rewardsGiven: {}, surprise: null, surpriseSeen: '', smallRewards: null, smallGot: {}, smallGiven: {}
     };
   }
   var S;
@@ -8018,6 +8025,13 @@ window.QUADWALK = {
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
   if (S.settings.nightOn === undefined) S.settings.nightOn = true;
+  if (!S.smallRewards) S.smallRewards = [
+    { id: 'sr1', kind: 'night', n: 1, text: 'Un autocollant de super-héroïne' },
+    { id: 'sr2', kind: 'night', n: 5, text: 'Tu choisis le dessert ou le film du soir' },
+    { id: 'sr3', kind: 'night', n: 10, text: 'Une glace ou une sortie au parc' },
+    { id: 'sr4', kind: 'morning', n: 5, text: 'Un petit cadeau de ton choix' }
+  ];
+  if (!S.smallGot) S.smallGot = {}; if (!S.smallGiven) S.smallGiven = {};
   if (!S.rewards) S.rewards = {}; if (!S.rewardsGiven) S.rewardsGiven = {}; if (S.surprise === undefined) S.surprise = null;
   function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toastErr("Le téléphone n'a plus de place pour enregistrer. Supprimez un message vocal."); } }
   function save() { saveLocal(); schedulePush(); }
@@ -8086,7 +8100,7 @@ window.QUADWALK = {
     $('heroBar').style.width = p.pct + '%';
     $('starCount').textContent = S.stars;
     if (hero) hero.setLevel(p.l);
-    setTimeout(maybeSurprise, 2200);
+    setTimeout(maybeSurprise, 2200); setTimeout(checkSmall, 3000);
     var hr = new Date().getHours();
     if (S.settings.nightOn && hr >= 18 && hr < 23 && S.nightHint !== today() && S.letterDone && S.sync.role !== 'grand') {
       S.nightHint = today(); saveLocal();
@@ -8176,20 +8190,50 @@ window.QUADWALK = {
       var n = nightsDone();
       heroSay(n === 1 ? "Tu as dormi toute seule ! Ça, c'est un courage de grande héroïne. Deux étoiles pour toi !" : pick(["Encore une nuit de courage ! Deux étoiles pour toi, championne.", "Toute seule dans ton lit… Plume et moi, on est super fières de toi !", "Une nuit de plus comme une grande. Tes frères vont être tellement fiers !"]), $('missionBubble'));
       if (hero && hero.power) setTimeout(function () { if (hero.busy && hero.busy()) return; hero.power(levelFor(S.stars)); }, 400);
-      checkLevelUp(); checkHatch();
+      checkLevelUp(); checkHatch(); setTimeout(checkSmall, 1800);
     });
     box.appendChild(b);
     var n = nightsDone(), c = $('nightCount');
-    if (!n) { c.textContent = 'Pas de nuit ratée : chaque soir, on peut réessayer.'; c.style.color = '#A9A2E6'; return; }
+    if (!n) { var n0 = nextSmall('night'); c.textContent = 'Pas de nuit ratée : chaque soir, on peut réessayer.' + (n0 && n0.n === 1 ? ' Une surprise t\'attend dès la première nuit !' : ''); c.style.color = '#A9A2E6'; return; }
     c.style.color = '';
     var moons = ''; for (var i = 0; i < Math.min(n, 20); i++) moons += '<i></i>';
-    c.innerHTML = moons + '<span style="margin-left:4px">' + n + (n > 1 ? ' nuits de courage' : ' nuit de courage') + '</span>';
+    var nx = nextSmall('night'), tz = nx ? ' · une surprise dans ' + (nx.n - n) + (nx.n - n > 1 ? ' nuits' : ' nuit') : '';
+    c.innerHTML = moons + '<span style="margin-left:4px">' + n + (n > 1 ? ' nuits de courage' : ' nuit de courage') + tz + '</span>';
+  }
+  var SR_KIND = { night: { one: 'nuit toute seule', many: 'nuits toute seule', count: function () { return nightsDone(); } }, morning: { one: 'mission du matin réussie', many: 'missions du matin réussies', count: function () { return Object.keys(S.days).filter(function (k) { return S.days[k].morningDone; }).length; } } };
+  function srLabel(r) { var k = SR_KIND[r.kind] || SR_KIND.night; return r.n + ' ' + (r.n > 1 ? k.many : k.one); }
+  function nextSmall(kind) {
+    var c = SR_KIND[kind].count();
+    return (S.smallRewards || []).filter(function (r) { return r.kind === kind && r.text && !S.smallGot[r.id] && r.n > c; }).sort(function (a, b) { return a.n - b.n; })[0];
+  }
+  var srQueue = [];
+  function checkSmall() {
+    if (S.sync.role === 'grand') return;
+    (S.smallRewards || []).forEach(function (r) {
+      if (!r.text || S.smallGot[r.id]) return;
+      if ((SR_KIND[r.kind] || SR_KIND.night).count() >= r.n) { S.smallGot[r.id] = today(); srQueue.push(r); }
+    });
+    save(); showSmall();
+  }
+  function showSmall() {
+    if (!srQueue.length) return;
+    if (celebrating || tipOn || $('ov').classList.contains('on')) { setTimeout(showSmall, 1500); return; }
+    var r = srQueue.shift();
+    confetti();
+    openOv(function (p) {
+      p.innerHTML = '<p class="big h">Petite récompense !</p><p class="center sub">' + esc(srLabel(r)) + ' : bravo, héroïne !</p>' +
+        '<button class="gift" id="srGift" aria-label="Ouvrir le cadeau"><span class="box"></span><span class="lid"></span></button><p class="hint center" id="srHint" style="margin:0">Touche le cadeau pour l\'ouvrir</p>' +
+        '<div class="reward" id="srReward"><small>De la part de Val et Thib</small><b>' + esc(r.text) + '</b></div><button class="btn alt" data-close>Merci !</button>';
+      speak('Petite récompense ! ' + srLabel(r) + '. Bravo, héroïne !');
+      var gb = p.querySelector('#srGift');
+      gb.addEventListener('click', function () { if (gb.classList.contains('open')) return; gb.classList.add('open'); confetti(); p.querySelector('#srHint').style.display = 'none'; setTimeout(function () { p.querySelector('#srReward').classList.add('on'); speak(r.text); }, 450); });
+    }, function () { setTimeout(showSmall, 600); });
   }
   function toggleMorning(id, bubbleEl) {
     var d = day();
     d.morning[id] = !d.morning[id];
     var all = MORNING.every(function (m) { return d.morning[m.id]; });
-    if (all && !d.morningDone) { d.morningDone = true; award('morning', 'Mission du matin réussie ! On part ensemble ?', bubbleEl); }
+    if (all && !d.morningDone) { d.morningDone = true; award('morning', 'Mission du matin réussie ! On part ensemble ?', bubbleEl); setTimeout(checkSmall, 1800); }
     else if (!all && d.morningDone) { d.morningDone = false; unaward('morning'); }
     save();
   }
@@ -8593,11 +8637,29 @@ window.QUADWALK = {
     return out;
   }
   function giftTodo() {
-    var todo = [2, 3, 4, 5].filter(function (l) { return S.levelSeen >= l && !S.rewardsGiven[l]; });
+    var todo = [2, 3, 4, 5].filter(function (l) { return S.levelSeen >= l && !S.rewardsGiven[l]; }).map(function (l) { return esc(rewardText(l)) + ' (pouvoir ' + l + ')'; });
+    (S.smallRewards || []).forEach(function (r) { if (S.smallGot[r.id] && !S.smallGiven[r.id]) todo.push(esc(r.text) + ' (' + esc(srLabel(r)) + ')'); });
     if (!todo.length) return '';
-    return '<div class="todo-gift">' + ic('star', 18) + ' À lui donner : ' + todo.map(function (l) { return esc(rewardText(l)) + ' (pouvoir ' + l + ')'; }).join(' · ') + '</div>';
+    return '<div class="todo-gift">' + ic('star', 18) + ' À lui donner : ' + todo.join(' · ') + '</div>';
+  }
+  function drawSmall(p) {
+    var box = p.querySelector('#srAdm'); if (!box) return;
+    box.innerHTML = (S.smallRewards || []).map(function (r, i) {
+      var got = S.smallGot[r.id], given = S.smallGiven[r.id], c = (SR_KIND[r.kind] || SR_KIND.night).count();
+      var st = given ? '<span class="ok">Donnée ✓</span>' : got ? '<span class="go">À donner !</span>' : '<span>' + Math.min(c, r.n) + ' / ' + r.n + '</span>';
+      return '<div class="sr-row" data-i="' + i + '"><div class="l1"><input type="number" min="1" max="99" data-f="n" value="' + r.n + '" aria-label="Nombre"><select data-f="kind"><option value="night"' + (r.kind === 'night' ? ' selected' : '') + '>nuits seule</option><option value="morning"' + (r.kind === 'morning' ? ' selected' : '') + '>matins réussis</option></select></div>' +
+        '<input type="text" data-f="text" maxlength="90" value="' + esc(r.text) + '" placeholder="La récompense…">' +
+        '<div class="l2">' + st + (got ? '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:800;color:#fff"><input type="checkbox" data-g="' + r.id + '"' + (given ? ' checked' : '') + ' style="width:20px;height:20px"> Donnée</label>' : '') + '<button class="sr-del" data-del="' + i + '">Supprimer</button></div></div>';
+    }).join('') || '<p class="hint" style="margin:0">Aucune petite récompense pour l\'instant.</p>';
+    function collect() { box.querySelectorAll('.sr-row').forEach(function (row) { var r = S.smallRewards[+row.getAttribute('data-i')]; r.n = Math.max(1, parseInt(row.querySelector('[data-f=n]').value, 10) || 1); r.kind = row.querySelector('[data-f=kind]').value; r.text = row.querySelector('[data-f=text]').value.trim(); }); }
+    box.querySelectorAll('[data-g]').forEach(function (cb) { cb.addEventListener('change', function () { collect(); S.smallGiven[cb.getAttribute('data-g')] = cb.checked; dirtyConfig(); save(); drawSmall(p); var g = p.querySelector('.todo-gift'); if (g) g.outerHTML = giftTodo() || '<span></span>'; }); });
+    box.querySelectorAll('[data-del]').forEach(function (bt) { bt.addEventListener('click', function () { collect(); S.smallRewards.splice(+bt.getAttribute('data-del'), 1); dirtyConfig(); save(); drawSmall(p); }); });
+    var add = p.querySelector('#srAdd'), sv = p.querySelector('#srSave');
+    if (!add.dataset.on) { add.dataset.on = 1; add.addEventListener('click', function () { collect(); S.smallRewards.push({ id: 'sr' + Date.now(), kind: 'night', n: 3, text: '' }); drawSmall(p); var ins = box.querySelectorAll('[data-f=text]'); if (ins.length) ins[ins.length - 1].focus(); }); }
+    if (!sv.dataset.on) { sv.dataset.on = 1; sv.addEventListener('click', function () { collect(); S.smallRewards = S.smallRewards.filter(function (r) { return r.text; }); dirtyConfig(); save(); drawSmall(p); sv.textContent = 'Enregistré ✓'; setTimeout(function () { sv.textContent = 'Enregistrer les petites récompenses'; }, 1800); }); }
   }
   function drawRewards(p) {
+    drawSmall(p);
     var box = p.querySelector('#rwAdm'); if (!box) return;
     box.innerHTML = [2, 3, 4, 5].map(function (l) {
       var t = TIERS[l - 1], reached = S.levelSeen >= l, given = !!S.rewardsGiven[l];
@@ -8659,6 +8721,7 @@ window.QUADWALK = {
           '<label>Code secret (4 chiffres)<input type="text" id="sCode" inputmode="numeric" maxlength="4" value="' + esc(st.code) + '"></label>' +
           '<button class="btn" id="sSave">Enregistrer les réglages</button></div>' +
         '<p class="sect">Récompenses dans la vraie vie</p><div class="card" style="display:flex;flex-direction:column;gap:10px"><p class="hint" style="margin:0">Une récompense par nouveau pouvoir. Elle voit un cadeau mystère, qu\'elle ouvre au passage de niveau. Laissez vide pour garder l\'idée proposée.</p><div id="rwAdm" style="display:flex;flex-direction:column;gap:10px"></div><button class="btn" id="rwSave">Enregistrer les récompenses</button>' +
+          '<p class="sect" style="margin:8px 0 0">Petites récompenses</p><p class="hint" style="margin:0">Données automatiquement quand elle atteint le palier. Écrivez ce que vous voulez.</p><div id="srAdm" style="display:flex;flex-direction:column;gap:10px"></div><button class="btn ghost" id="srAdd">' + ic('plus') + 'Ajouter une petite récompense</button><button class="btn" id="srSave">Enregistrer les petites récompenses</button>' +
           '<label style="margin-top:6px">Une surprise à tout moment<input type="text" id="spText" maxlength="90" placeholder="Ce week-end, on t\'emmène manger une glace !"></label><button class="btn alt" id="spSend">' + ic('star') + 'Envoyer la surprise</button><p class="hint" id="spInfo" style="margin:0"></p></div>' +
         '<p class="sect">Missions du jour</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><div id="misAdm" style="display:flex;flex-direction:column;gap:8px"></div>' +
           '<label>Nouvelle mission<input type="text" id="nmLabel" maxlength="50" placeholder="J\'ai…"></label><select id="nmTag"><option>Courage</option><option>Gentillesse</option><option>Effort</option></select><button class="btn alt" id="nmAdd">' + ic('plus') + 'Ajouter la mission</button></div>' +
@@ -9056,7 +9119,7 @@ window.QUADWALK = {
   function progressPayload() {
     var keys = Object.keys(S.days).sort().slice(-60), days = {}; keys.forEach(function (k) { days[k] = S.days[k]; });
     var rk = Object.keys(S.riddles).sort().slice(-30), rid = {}; rk.forEach(function (k) { rid[k] = S.riddles[k]; });
-    return { stars: S.stars, days: days, pride: S.pride, qualities: S.qualities, pet: S.pet, riddles: rid, levelSeen: S.levelSeen, firstDay: S.firstDay, letterDone: S.letterDone };
+    return { stars: S.stars, days: days, pride: S.pride, qualities: S.qualities, pet: S.pet, riddles: rid, levelSeen: S.levelSeen, firstDay: S.firstDay, letterDone: S.letterDone, smallGot: S.smallGot };
   }
   function schedulePush() { if (!syncReady() || applying) return; clearTimeout(pushT); pushT = setTimeout(pushNow, 1500); }
   function pushNow(initial) {
@@ -9065,7 +9128,7 @@ window.QUADWALK = {
     if (S.sync.role === 'enfant') { up.progress = progressPayload(); up.progressAt = Date.now(); up.flags = S.flags; }
     if (S.sync.configDirty || (initial && S.sync.role === 'enfant' && !S.sync.configAt)) {
       var st = Object.assign({}, S.settings); delete st.lastFrom;
-      up.config = { settings: st, missions: S.missions, allies: S.allies, rewards: S.rewards, rewardsGiven: S.rewardsGiven, surprise: S.surprise }; up.configAt = Date.now();
+      up.config = { settings: st, missions: S.missions, allies: S.allies, rewards: S.rewards, rewardsGiven: S.rewardsGiven, surprise: S.surprise, smallRewards: S.smallRewards, smallGiven: S.smallGiven }; up.configAt = Date.now();
       S.sync.configAt = up.configAt; S.sync.configDirty = false; saveLocal();
     }
     if (Object.keys(up).length) famRef.set(up, { merge: true }).catch(function () { syncState = 'error'; });
@@ -9078,6 +9141,7 @@ window.QUADWALK = {
       S.settings = Object.assign(S.settings, r.config.settings || {}); S.settings.lastFrom = keepFrom;
       S.missions = r.config.missions || S.missions; S.allies = r.config.allies || [];
       S.rewards = r.config.rewards || S.rewards; S.rewardsGiven = r.config.rewardsGiven || S.rewardsGiven; if (r.config.surprise !== undefined) S.surprise = r.config.surprise;
+      if (r.config.smallRewards) S.smallRewards = r.config.smallRewards; if (r.config.smallGiven) S.smallGiven = r.config.smallGiven;
       S.sync.configAt = r.configAt;
     }
     if (S.sync.role === 'grand' && r.progress) {
