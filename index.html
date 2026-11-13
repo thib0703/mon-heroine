@@ -150,6 +150,32 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 @keyframes cIn{from{opacity:0;transform:translateY(10px) scale(.96)}}
 .nchips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:2px 0 4px}
 .nchips .chip{padding:8px 14px;min-height:40px}
+.pill{white-space:nowrap}
+.row>.btn{font-size:16px;padding-left:10px;padding-right:10px;white-space:nowrap}
+.gift{position:relative;width:130px;height:120px;margin:4px auto 0;cursor:pointer;background:none;border:none;padding:0;animation:giftWob 1.6s ease-in-out infinite}
+.gift .box{position:absolute;bottom:0;left:15px;width:100px;height:74px;border-radius:12px;background:linear-gradient(160deg,#9B6BFF,#6A3FD6)}
+.gift .box::before{content:"";position:absolute;left:44px;top:0;width:12px;height:100%;background:#FFC23D}
+.gift .lid{position:absolute;bottom:70px;left:7px;width:116px;height:28px;border-radius:10px;background:linear-gradient(160deg,#B58CFF,#8257F0);transition:transform .7s cubic-bezier(.3,1.4,.5,1),opacity .7s}
+.gift .lid::before{content:"";position:absolute;left:52px;top:0;width:12px;height:100%;background:#FFC23D}
+.gift .lid::after{content:"";position:absolute;left:38px;top:-22px;width:40px;height:26px;border:7px solid #FFC23D;border-radius:50% 50% 8px 8px;box-sizing:border-box}
+.gift.open{animation:none}
+.gift.open .lid{transform:translate(30px,-70px) rotate(28deg);opacity:0}
+@keyframes giftWob{0%,70%,100%{transform:none}76%{transform:rotate(-7deg)}82%{transform:rotate(6deg)}88%{transform:rotate(-4deg)}94%{transform:rotate(2deg)}}
+@keyframes rwPop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.reward{display:none;flex-direction:column;gap:6px;text-align:center;background:linear-gradient(120deg,#3A1F7A,#1C2C78);border:2px solid #FFC23D;border-radius:18px;padding:14px;animation:rwPop .6s cubic-bezier(.2,1.5,.4,1) both}
+.reward.on{display:flex}
+.reward small{font-weight:800;color:#FFE08A;letter-spacing:.04em;text-transform:uppercase;font-size:12px}
+.reward b{font-family:"Fredoka","Nunito",sans-serif;font-size:22px;line-height:1.25}
+.rw-faces{display:flex;justify-content:center;gap:10px}
+.rw-faces img{width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid #FFC23D}
+.tier .gift-line{display:block;margin-top:4px;font-size:13px;font-weight:800;color:#FFE08A;line-height:1.35}
+.tier .gift-line.wait{color:#A9A2E6}
+.tier .gift-line svg{display:inline-block;vertical-align:-2px;margin-right:4px}
+.rw-row{display:flex;flex-direction:column;gap:6px;background:#1E1760;border-radius:16px;padding:12px}
+.rw-row .h2{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:800}
+.rw-row .st{font-size:13px;font-weight:800;color:#A9A2E6;white-space:nowrap}
+.rw-row .st.go{color:#FFC23D}.rw-row .st.ok{color:#7BE0A0}
+.todo-gift{background:linear-gradient(120deg,#5B3A0E,#3A2A6E);border:2px solid #FFC23D;border-radius:18px;padding:12px 14px;font-weight:800;line-height:1.4;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -7968,7 +7994,8 @@ window.QUADWALK = {
       v: 1, setupDone: false, letterDone: false,
       settings: { childName: '', heroName: 'Nova', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: true },
       stars: 0, days: {}, missions: DEFAULT_MISSIONS.slice(), pride: [], messages: [], levelSeen: 1, firstDay: today(),
-      pet: null, allies: [], qualities: [], flags: [], riddles: {}
+      pet: null, allies: [], qualities: [], flags: [], riddles: {},
+      rewards: {}, rewardsGiven: {}, surprise: null, surpriseSeen: ''
     };
   }
   var S;
@@ -7980,6 +8007,7 @@ window.QUADWALK = {
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
+  if (!S.rewards) S.rewards = {}; if (!S.rewardsGiven) S.rewardsGiven = {}; if (S.surprise === undefined) S.surprise = null;
   function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toastErr("Le téléphone n'a plus de place pour enregistrer. Supprimez un message vocal."); } }
   function save() { saveLocal(); schedulePush(); }
   function dirtyConfig() { S.sync.configDirty = true; }
@@ -8047,6 +8075,7 @@ window.QUADWALK = {
     $('heroBar').style.width = p.pct + '%';
     $('starCount').textContent = S.stars;
     if (hero) hero.setLevel(p.l);
+    setTimeout(maybeSurprise, 2200);
     var n = newMessages().length;
     $('newMsgToast').style.display = n ? '' : 'none';
     $('newMsgText').textContent = n === 1 ? 'Un message de ' + newMessages()[0].from + " t'attend !" : n + ' messages de tes frères t\'attendent !';
@@ -8219,8 +8248,26 @@ window.QUADWALK = {
     $('tierList').innerHTML = TIERS.map(function (t, i) {
       var got = p.l >= t.n, cur = p.l === t.n;
       var right = cur ? '<span style="font-size:13px;font-weight:800;color:#FFE08A">Actuel</span>' : got ? '<span style="color:#7BE0A0" aria-label="Débloqué">' + ic('tick') + '</span>' : (i === p.l ? '<span style="font-size:14px;font-weight:800;color:#CFC9FF">' + (S.stars) + '/' + tierAt(i) + '</span>' : '<span style="color:#A9A2E6" aria-label="Verrouillé">' + ic('lock', 20) + '</span>');
-      return '<div class="tier' + (got ? ' got' : ' locked') + (cur ? ' cur' : '') + '"><div class="num h">' + t.n + '</div><div class="t"><b>' + t.name + '</b><span>' + (got || i === p.l ? petDesc(t.desc) : 'Surprise…') + '</span></div>' + right + '</div>';
+      var gl = '';
+      if (t.n >= 2) gl = got ? '<span class="gift-line">' + ic('star', 14) + (S.rewardsGiven[t.n] ? 'Récompense reçue : ' : 'Ta récompense : ') + esc(rewardText(t.n)) + '</span>' : '<span class="gift-line wait">' + ic('lock', 14) + 'Une récompense mystère t\'attend</span>';
+      return '<div class="tier' + (got ? ' got' : ' locked') + (cur ? ' cur' : '') + '"><div class="num h">' + t.n + '</div><div class="t"><b>' + t.name + '</b><span>' + (got || i === p.l ? petDesc(t.desc) : 'Surprise…') + '</span>' + gl + '</div>' + right + '</div>';
     }).join('');
+  }
+  var REWARD_IDEAS = { 2: 'Un petit cadeau d\'héroïne', 3: 'Une sortie avec un de tes grands frères', 4: 'Une grande activité avec tes frères', 5: 'Une journée entière avec Val et Thib : c\'est toi qui choisis le programme !' };
+  function rewardText(l) { return ((S.rewards || {})[l] || '').trim() || REWARD_IDEAS[l] || 'Une surprise de tes grands frères'; }
+  function maybeSurprise() {
+    var sp = S.surprise;
+    if (!sp || !sp.id || S.surpriseSeen === sp.id || S.sync.role === 'grand' || !S.letterDone || current !== 'home' || celebrating || tipOn || $('ov').classList.contains('on')) return;
+    S.surpriseSeen = sp.id; save();
+    confetti();
+    openOv(function (p) {
+      p.innerHTML = '<div class="rw-faces"><img src="models/val_face.jpg" alt="Val"><img src="models/thib_face.jpg" alt="Thib"></div><p class="big h">Surprise !</p><p class="center sub">Tes grands frères ont quelque chose pour toi…</p>' +
+        '<button class="gift" id="spGift" aria-label="Ouvrir le cadeau"><span class="box"></span><span class="lid"></span></button><p class="hint center" id="spHint" style="margin:0">Touche le cadeau pour l\'ouvrir</p>' +
+        '<div class="reward" id="spReward"><small>De la part de Val et Thib</small><b>' + esc(sp.text) + '</b></div><button class="btn alt" data-close>Merci !</button>';
+      speak('Surprise ! Tes grands frères ont quelque chose pour toi.');
+      var gb = p.querySelector('#spGift');
+      gb.addEventListener('click', function () { if (gb.classList.contains('open')) return; gb.classList.add('open'); confetti(); p.querySelector('#spHint').style.display = 'none'; setTimeout(function () { p.querySelector('#spReward').classList.add('on'); speak(sp.text); }, 450); });
+    });
   }
   function petDesc(d) { return S.pet ? d.replace('ton compagnon', S.pet.name) : d; }
   function checkLevelUp() {
@@ -8245,9 +8292,12 @@ window.QUADWALK = {
     openOv(function (p) {
       var m = S.messages.filter(function (x) { return x.level === l; });
       var lc = LEVEL_CARD[l]; if (lc) S.cardsSeen = (S.cardsSeen || []).concat([lc]);
-      p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + petDesc(t.desc) + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
+      p.innerHTML = (lc ? '<img class="poster" src="img/' + lc + '.jpg" alt="">' : '<p class="center" style="color:#FFC23D;margin:0">' + ic('star', 56) + '</p>') + '<p class="big h">Nouveau pouvoir !</p><p class="center h" style="font-size:30px;margin:0;color:#FFE08A">' + t.name + '</p><p class="center sub">' + petDesc(t.desc) + '</p>' + (m.length ? allyPic(m[0].from) + '<button class="btn" id="celMsg">' + ic('play') + 'Un message de ' + esc(m[0].from) + '</button>' : '') + (l === 5 ? '<p class="center" style="font-weight:700;line-height:1.5">Tu as tous les pouvoirs. Et tu sais quoi ? Ce courage, il était en toi depuis le début. Tu es l\'héroïne.</p>' : '') + (l >= 2 ? '<p class="center" style="margin:6px 0 0;font-weight:800;color:#FFE08A">Et une récompense t\'attend dans la vraie vie !</p><button class="gift" id="celGift" aria-label="Ouvrir le cadeau"><span class="box"></span><span class="lid"></span></button><p class="hint center" id="celGiftHint" style="margin:0">Touche le cadeau pour l\'ouvrir</p><div class="reward" id="celReward"><small>De la part de Val et Thib</small><b>' + esc(rewardText(l)) + '</b></div>' : '') +
+        '<p class="center hint">Nouvelles cartes d\'aventure dans « Pouvoirs » !</p><button class="btn alt" data-close>Super !</button>';
       speak('Nouveau pouvoir ! ' + t.name + '. ' + (l === 5 ? "Tu es une vraie héroïne." : "Grâce à toi, je suis encore plus forte."));
       if (m.length) p.querySelector('#celMsg').addEventListener('click', function () { playMsg(m[0]); });
+      var gb = p.querySelector('#celGift');
+      if (gb) gb.addEventListener('click', function () { if (gb.classList.contains('open')) return; gb.classList.add('open'); confetti(); p.querySelector('#celGiftHint').style.display = 'none'; setTimeout(function () { p.querySelector('#celReward').classList.add('on'); speak('Ta récompense : ' + rewardText(l)); }, 450); });
     }, function () { setTimeout(function () { callBrother(l % 2 ? 'val' : 'thib', { cheer: true }); }, l === 5 ? 7000 : 600); guideLevel(l); });
     if (l === 5 && hero) setTimeout(function () { hero.giant(); }, 2500);
   }
@@ -8500,6 +8550,27 @@ window.QUADWALK = {
     }
     return out;
   }
+  function giftTodo() {
+    var todo = [2, 3, 4, 5].filter(function (l) { return S.levelSeen >= l && !S.rewardsGiven[l]; });
+    if (!todo.length) return '';
+    return '<div class="todo-gift">' + ic('star', 18) + ' À lui donner : ' + todo.map(function (l) { return esc(rewardText(l)) + ' (pouvoir ' + l + ')'; }).join(' · ') + '</div>';
+  }
+  function drawRewards(p) {
+    var box = p.querySelector('#rwAdm'); if (!box) return;
+    box.innerHTML = [2, 3, 4, 5].map(function (l) {
+      var t = TIERS[l - 1], reached = S.levelSeen >= l, given = !!S.rewardsGiven[l];
+      var st = given ? '<span class="st ok">Donnée ✓</span>' : reached ? '<span class="st go">À donner !</span>' : '<span class="st">À ' + tierAt(l - 1) + ' étoiles</span>';
+      return '<div class="rw-row"><div class="h2"><span>Pouvoir ' + l + ' · ' + t.name + '</span>' + st + '</div>' +
+        '<input type="text" data-rw="' + l + '" maxlength="90" value="' + esc(S.rewards[l] || '') + '" placeholder="' + esc(REWARD_IDEAS[l]) + '">' +
+        (reached ? '<label style="flex-direction:row;align-items:center;gap:10px;font-weight:800"><input type="checkbox" data-rg="' + l + '"' + (given ? ' checked' : '') + ' style="width:22px;height:22px"> Récompense donnée</label>' : '') + '</div>';
+    }).join('');
+    box.querySelectorAll('[data-rg]').forEach(function (c) { c.addEventListener('change', function () { S.rewardsGiven[c.getAttribute('data-rg')] = c.checked; dirtyConfig(); save(); drawRewards(p); var g = p.querySelector('.todo-gift'); if (g) g.outerHTML = giftTodo() || '<span></span>'; }); });
+    var sv = p.querySelector('#rwSave');
+    if (!sv.dataset.on) { sv.dataset.on = 1; sv.addEventListener('click', function () { box.querySelectorAll('[data-rw]').forEach(function (i) { S.rewards[i.getAttribute('data-rw')] = i.value.trim(); }); dirtyConfig(); save(); sv.textContent = 'Enregistré ✓'; setTimeout(function () { sv.textContent = 'Enregistrer les récompenses'; }, 1800); }); }
+    var ss = p.querySelector('#spSend'), info = p.querySelector('#spInfo');
+    info.textContent = S.surprise && S.surprise.text ? 'Dernière surprise : « ' + S.surprise.text + ' »' : '';
+    if (!ss.dataset.on) { ss.dataset.on = 1; ss.addEventListener('click', function () { var t = p.querySelector('#spText').value.trim(); if (!t) return; S.surprise = { id: 's' + Date.now(), text: t }; dirtyConfig(); save(); p.querySelector('#spText').value = ''; info.textContent = 'Envoyée ! Elle la découvrira à sa prochaine visite de l\'accueil.'; }); }
+  }
   function todayHTML() {
     var d = S.days[today()] || { done: {}, morningDone: false, bonus: false, starsToday: 0, seconds: 0 };
     var done = S.missions.filter(function (m) { return d.done && d.done[m.id]; }).map(function (m) { return m.label; });
@@ -8525,7 +8596,7 @@ window.QUADWALK = {
       var ws = weeksStats();
       p.innerHTML =
         '<div class="top"><p class="big h" style="text-align:left">' + (S.sync.role === 'grand' ? 'L\'appli de ' + esc(S.settings.childName || 'ta sœur') : 'Espace des grands') + '</p><button class="iconbtn" data-close aria-label="Fermer">' + ic('close') + '</button></div>' +
-        '<div class="card" id="todayCard">' + todayHTML() + '</div><div class="card" id="statCard">' + statHTML() + '</div>' +
+        giftTodo() + '<div class="card" id="todayCard">' + todayHTML() + '</div><div class="card" id="statCard">' + statHTML() + '</div>' +
         (S.flags.length ? '<p class="sect">À regarder</p><div id="flagAdm" style="display:flex;flex-direction:column;gap:8px"></div>' : '') + '<p class="sect">Nos avatars d\'alliés</p><div class="card" style="display:flex;flex-direction:column;gap:12px"><div id="allyAdm" style="display:flex;flex-direction:column;gap:8px"></div><label>Prénom<input type="text" id="aName" maxlength="20" placeholder="Thibaut"></label><label>Son pouvoir (inventé par elle)<input type="text" id="aPow" maxlength="40" placeholder="Super-rire"></label><label>Photo du dessin qu\'elle a fait de vous<input type="file" id="aImg" accept="image/*"></label><button class="btn alt" id="aAdd">' + ic('plus') + 'Ajouter / mettre à jour</button></div>' +
         '<p class="sect">Messages vocaux</p><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
           '<label>De la part de<input type="text" id="mFrom" maxlength="20" value="' + esc(st.lastFrom || '') + '" placeholder="Thibaut"></label>' +
@@ -8542,6 +8613,8 @@ window.QUADWALK = {
           '<label style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="sVoice"' + (st.voice ? ' checked' : '') + ' style="width:24px;height:24px"> L\'héroïne parle à voix haute</label>' +
           '<label>Code secret (4 chiffres)<input type="text" id="sCode" inputmode="numeric" maxlength="4" value="' + esc(st.code) + '"></label>' +
           '<button class="btn" id="sSave">Enregistrer les réglages</button></div>' +
+        '<p class="sect">Récompenses dans la vraie vie</p><div class="card" style="display:flex;flex-direction:column;gap:10px"><p class="hint" style="margin:0">Une récompense par nouveau pouvoir. Elle voit un cadeau mystère, qu\'elle ouvre au passage de niveau. Laissez vide pour garder l\'idée proposée.</p><div id="rwAdm" style="display:flex;flex-direction:column;gap:10px"></div><button class="btn" id="rwSave">Enregistrer les récompenses</button>' +
+          '<label style="margin-top:6px">Une surprise à tout moment<input type="text" id="spText" maxlength="90" placeholder="Ce week-end, on t\'emmène manger une glace !"></label><button class="btn alt" id="spSend">' + ic('star') + 'Envoyer la surprise</button><p class="hint" id="spInfo" style="margin:0"></p></div>' +
         '<p class="sect">Missions du jour</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><div id="misAdm" style="display:flex;flex-direction:column;gap:8px"></div>' +
           '<label>Nouvelle mission<input type="text" id="nmLabel" maxlength="50" placeholder="J\'ai…"></label><select id="nmTag"><option>Courage</option><option>Gentillesse</option><option>Effort</option></select><button class="btn alt" id="nmAdd">' + ic('plus') + 'Ajouter la mission</button></div>' +
         '<p class="sect">Temps de jeu</p><div class="card" style="display:flex;flex-direction:column;gap:8px"><button class="btn alt" id="addTime">Redonner 10 minutes aujourd\'hui</button></div>' +
@@ -8576,7 +8649,7 @@ window.QUADWALK = {
         });
       }
       drawMis();
-      drawFlags(p); drawAllyAdm(p); drawSync(p);
+      drawFlags(p); drawAllyAdm(p); drawSync(p); drawRewards(p);
       p.querySelector('#nmAdd').addEventListener('click', function () { var l = p.querySelector('#nmLabel').value.trim(); if (!l) return; S.missions.push({ id: 'm' + Date.now(), label: l, tag: p.querySelector('#nmTag').value }); dirtyConfig(); save(); p.querySelector('#nmLabel').value = ''; drawMis(); });
       function drawMsgAdm() {
         var box = p.querySelector('#mAdm'); box.innerHTML = '';
@@ -8946,7 +9019,7 @@ window.QUADWALK = {
     if (S.sync.role === 'enfant') { up.progress = progressPayload(); up.progressAt = Date.now(); up.flags = S.flags; }
     if (S.sync.configDirty || (initial && S.sync.role === 'enfant' && !S.sync.configAt)) {
       var st = Object.assign({}, S.settings); delete st.lastFrom;
-      up.config = { settings: st, missions: S.missions, allies: S.allies }; up.configAt = Date.now();
+      up.config = { settings: st, missions: S.missions, allies: S.allies, rewards: S.rewards, rewardsGiven: S.rewardsGiven, surprise: S.surprise }; up.configAt = Date.now();
       S.sync.configAt = up.configAt; S.sync.configDirty = false; saveLocal();
     }
     if (Object.keys(up).length) famRef.set(up, { merge: true }).catch(function () { syncState = 'error'; });
@@ -8958,6 +9031,7 @@ window.QUADWALK = {
       var keepFrom = S.settings.lastFrom;
       S.settings = Object.assign(S.settings, r.config.settings || {}); S.settings.lastFrom = keepFrom;
       S.missions = r.config.missions || S.missions; S.allies = r.config.allies || [];
+      S.rewards = r.config.rewards || S.rewards; S.rewardsGiven = r.config.rewardsGiven || S.rewardsGiven; if (r.config.surprise !== undefined) S.surprise = r.config.surprise;
       S.sync.configAt = r.configAt;
     }
     if (S.sync.role === 'grand' && r.progress) {
