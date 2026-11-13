@@ -176,6 +176,15 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
 .rw-row .st{font-size:13px;font-weight:800;color:#A9A2E6;white-space:nowrap}
 .rw-row .st.go{color:#FFC23D}.rw-row .st.ok{color:#7BE0A0}
 .todo-gift{background:linear-gradient(120deg,#5B3A0E,#3A2A6E);border:2px solid #FFC23D;border-radius:18px;padding:12px 14px;font-weight:800;line-height:1.4;margin-bottom:12px}
+.night-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#2A1E78,#13104A);border:2px solid #FFC23D;border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.night-card::before{content:"";position:absolute;right:-18px;top:-18px;width:90px;height:90px;border-radius:999px;box-shadow:inset -22px 8px 0 0 #FFE08A;transform:rotate(-20deg);opacity:.85}
+.night-card .nt{position:relative;display:flex;flex-direction:column;gap:2px;padding-right:70px}
+.night-card .nt b{font-family:"Fredoka","Nunito",sans-serif;font-size:19px;color:#FFE08A}
+.night-card .nt span{font-size:14px;font-weight:700;color:#CFC9FF;line-height:1.4}
+.night-card .mission{background:#3A3290}
+.night-card .mission.done{background:#FFC23D;color:#1B1650}
+.night-count{display:flex;gap:4px;flex-wrap:wrap;align-items:center;font-size:13px;font-weight:800;color:#FFE08A}
+.night-count i{width:14px;height:14px;border-radius:999px;box-shadow:inset -5px 2px 0 0 #FFE08A;transform:rotate(-20deg)}
 </style>
 </head>
 <body>
@@ -207,6 +216,7 @@ label{font-size:14px;font-weight:800;color:#CFC9FF;display:flex;flex-direction:c
   <section class="screen" id="s-missions">
     <div class="top"><h1 class="title h">Missions</h1><div class="pill"><span data-ic="star" style="color:#FFC23D"></span><span id="todayStars">0</span><span style="font-weight:700;color:#CFC9FF">/ <span id="maxStars">5</span> aujourd'hui</span></div></div>
     <div class="bubble" id="missionBubble"></div>
+    <div id="nightWrap"><p class="sect">Grande mission</p><div class="night-card"><div class="nt"><b>La mission de la nuit</b><span>Dormir toute seule dans ton lit, comme une grande héroïne. Plume veille sur toi toute la nuit.</span></div><div id="nightList"></div><div class="night-count" id="nightCount"></div></div></div>
     <p class="sect">Mission du matin</p>
     <div id="morningList" style="display:flex;flex-direction:column;gap:8px"></div>
     <p class="sect">Missions du jour</p>
@@ -7992,7 +8002,7 @@ window.QUADWALK = {
   function fresh() {
     return {
       v: 1, setupDone: false, letterDone: false,
-      settings: { childName: '', heroName: 'Nova', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: true },
+      settings: { childName: '', heroName: 'Nova', code: '', minutesPerDay: 20, pace: 'normal', maxStars: 5, voice: true, nightOn: true, nightLabel: '' },
       stars: 0, days: {}, missions: DEFAULT_MISSIONS.slice(), pride: [], messages: [], levelSeen: 1, firstDay: today(),
       pet: null, allies: [], qualities: [], flags: [], riddles: {},
       rewards: {}, rewardsGiven: {}, surprise: null, surpriseSeen: ''
@@ -8007,6 +8017,7 @@ window.QUADWALK = {
   ['pet', 'allies', 'qualities', 'flags', 'riddles'].forEach(function (k) { if (S[k] === undefined) S[k] = k === 'pet' ? null : k === 'riddles' ? {} : []; });
   if (S.pet && S.pet.type !== 'creature') S.pet = { type: 'creature', name: S.pet.name, since: S.pet.since };
   if (!S.sync) S.sync = { family: '', role: 'enfant', configAt: 0, configDirty: false };
+  if (S.settings.nightOn === undefined) S.settings.nightOn = true;
   if (!S.rewards) S.rewards = {}; if (!S.rewardsGiven) S.rewardsGiven = {}; if (S.surprise === undefined) S.surprise = null;
   function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toastErr("Le téléphone n'a plus de place pour enregistrer. Supprimez un message vocal."); } }
   function save() { saveLocal(); schedulePush(); }
@@ -8076,6 +8087,11 @@ window.QUADWALK = {
     $('starCount').textContent = S.stars;
     if (hero) hero.setLevel(p.l);
     setTimeout(maybeSurprise, 2200);
+    var hr = new Date().getHours();
+    if (S.settings.nightOn && hr >= 18 && hr < 23 && S.nightHint !== today() && S.letterDone && S.sync.role !== 'grand') {
+      S.nightHint = today(); saveLocal();
+      setTimeout(function () { if (current === 'home' && !celebrating && !$('ov').classList.contains('on')) heroSay(pick(["Ce soir, grande mission : dormir dans ton lit, toute seule. Plume veille sur toi toute la nuit.", "Avant de dormir, respire avec ton Bouclier de courage. Tu es plus forte que la nuit !", "Ce soir, tu tentes la mission de la nuit ? Demain matin, coche-la pour gagner deux étoiles !"])); }, 4500);
+    }
     var n = newMessages().length;
     $('newMsgToast').style.display = n ? '' : 'none';
     $('newMsgText').textContent = n === 1 ? 'Un message de ' + newMessages()[0].from + " t'attend !" : n + ' messages de tes frères t\'attendent !';
@@ -8133,6 +8149,7 @@ window.QUADWALK = {
       });
       list.appendChild(b);
     });
+    renderNight(d);
     var h = new Date().getHours();
     $('bonusWrap').style.display = h >= 15 ? '' : 'none';
     var bl = $('bonusList'); bl.innerHTML = '';
@@ -8142,6 +8159,31 @@ window.QUADWALK = {
       save(); renderMissions();
     });
     bl.appendChild(bb);
+  }
+  var NIGHT_STARS = 2;
+  function nightLabel() { return (S.settings.nightLabel || '').trim() || "Cette nuit, j'ai dormi toute seule dans mon lit"; }
+  function nightsDone() { return Object.keys(S.days).filter(function (k) { return S.days[k].night; }).length; }
+  function renderNight(d) {
+    $('nightWrap').style.display = S.settings.nightOn ? '' : 'none';
+    if (!S.settings.nightOn) return;
+    var box = $('nightList'); box.innerHTML = '';
+    var w = document.createElement('div'); w.innerHTML = missionBtn(!!d.night, nightLabel(), 'Grande mission · ' + NIGHT_STARS + ' étoiles'); var b = w.firstChild;
+    b.addEventListener('click', function () {
+      if (d.night) { d.night = false; if (d.awarded.night) { S.stars = Math.max(0, S.stars - NIGHT_STARS); delete d.awarded.night; } save(); renderMissions(); return; }
+      d.night = true;
+      if (!d.awarded.night) { d.awarded.night = NIGHT_STARS; S.stars += NIGHT_STARS; }
+      save(); renderMissions(); confetti();
+      var n = nightsDone();
+      heroSay(n === 1 ? "Tu as dormi toute seule ! Ça, c'est un courage de grande héroïne. Deux étoiles pour toi !" : pick(["Encore une nuit de courage ! Deux étoiles pour toi, championne.", "Toute seule dans ton lit… Plume et moi, on est super fières de toi !", "Une nuit de plus comme une grande. Tes frères vont être tellement fiers !"]), $('missionBubble'));
+      if (hero && hero.power) setTimeout(function () { if (hero.busy && hero.busy()) return; hero.power(levelFor(S.stars)); }, 400);
+      checkLevelUp(); checkHatch();
+    });
+    box.appendChild(b);
+    var n = nightsDone(), c = $('nightCount');
+    if (!n) { c.textContent = 'Pas de nuit ratée : chaque soir, on peut réessayer.'; c.style.color = '#A9A2E6'; return; }
+    c.style.color = '';
+    var moons = ''; for (var i = 0; i < Math.min(n, 20); i++) moons += '<i></i>';
+    c.innerHTML = moons + '<span style="margin-left:4px">' + n + (n > 1 ? ' nuits de courage' : ' nuit de courage') + '</span>';
   }
   function toggleMorning(id, bubbleEl) {
     var d = day();
@@ -8578,6 +8620,7 @@ window.QUADWALK = {
     var rows = [
       ['Mission du matin', d.morningDone ? 'Réussie' : 'Pas encore'],
       ['Partie même sans envie', d.bonus ? 'Oui, bravo à elle' : '—'],
+      ['Nuit toute seule', !S.settings.nightOn ? 'Mission désactivée' : d.night ? 'Oui ! (' + nightsDone() + ' en tout)' : '—'],
       ['Étoiles aujourd\'hui', d.starsToday + ' / ' + S.settings.maxStars],
       ['Défi du jour', r && r.solved ? 'Réussi' : r ? 'Essayé' : '—'],
       ['Temps de jeu', Math.round((d.seconds || 0) / 60) + ' min']
@@ -8611,6 +8654,8 @@ window.QUADWALK = {
           '<label>Étoiles maximum par jour<input type="number" id="sMax" min="1" max="10" value="' + st.maxStars + '"></label>' +
           '<label>Rythme de progression<select id="sPace"><option value="lent">Lent</option><option value="normal">Normal</option><option value="rapide">Rapide</option></select></label>' +
           '<label style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="sVoice"' + (st.voice ? ' checked' : '') + ' style="width:24px;height:24px"> L\'héroïne parle à voix haute</label>' +
+          '<label style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="sNight"' + (st.nightOn ? ' checked' : '') + ' style="width:24px;height:24px"> Grande mission de la nuit (2 étoiles, en plus du maximum du jour)</label>' +
+          '<label>Texte de la mission de la nuit<input type="text" id="sNightL" maxlength="60" value="' + esc(st.nightLabel || '') + '" placeholder="Cette nuit, j\'ai dormi toute seule dans mon lit"></label>' +
           '<label>Code secret (4 chiffres)<input type="text" id="sCode" inputmode="numeric" maxlength="4" value="' + esc(st.code) + '"></label>' +
           '<button class="btn" id="sSave">Enregistrer les réglages</button></div>' +
         '<p class="sect">Récompenses dans la vraie vie</p><div class="card" style="display:flex;flex-direction:column;gap:10px"><p class="hint" style="margin:0">Une récompense par nouveau pouvoir. Elle voit un cadeau mystère, qu\'elle ouvre au passage de niveau. Laissez vide pour garder l\'idée proposée.</p><div id="rwAdm" style="display:flex;flex-direction:column;gap:10px"></div><button class="btn" id="rwSave">Enregistrer les récompenses</button>' +
@@ -8634,6 +8679,7 @@ window.QUADWALK = {
         st.minutesPerDay = Math.max(0, Math.min(120, parseInt(p.querySelector('#sMin').value, 10) || 0));
         st.maxStars = Math.max(1, Math.min(10, parseInt(p.querySelector('#sMax').value, 10) || 5));
         st.pace = p.querySelector('#sPace').value; st.voice = p.querySelector('#sVoice').checked;
+        st.nightOn = p.querySelector('#sNight').checked; st.nightLabel = p.querySelector('#sNightL').value.trim();
         var c = p.querySelector('#sCode').value.replace(/\D/g, ''); if (c.length === 4) st.code = c;
         S.levelSeen = Math.min(S.levelSeen, Math.max(1, levelFor(S.stars)));
         dirtyConfig(); save(); this.textContent = 'Enregistré !'; var b = this; setTimeout(function () { b.textContent = 'Enregistrer les réglages'; }, 1500);
