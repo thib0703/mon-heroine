@@ -52,6 +52,8 @@ body.onhome #stageWrap{background:none}
 body.onhome #s-home .top .title,body.onhome #s-home .top .sub{text-shadow:0 2px 10px rgba(0,0,0,.55)}
 #pwBar{position:absolute;right:10px;top:12px;z-index:3;display:flex;flex-direction:column;gap:7px}
 #pwBar:empty{display:none}
+#pwBar{transition:opacity .4s}
+body.visit #pwBar{opacity:0;pointer-events:none}
 .pw{width:var(--pw,48px);height:var(--pw,48px);border-radius:50%;border:2px solid rgba(255,255,255,.55);display:grid;place-items:center;font-size:23px;line-height:1;padding:0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.4),inset 0 2px 6px rgba(255,255,255,.35);transition:transform .15s,opacity .25s,filter .25s;-webkit-tap-highlight-color:transparent}
 .pw:active{transform:scale(.88)}
 .pw.on{transform:scale(1.15);border-color:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.25),0 0 22px currentColor}
@@ -7317,7 +7319,7 @@ window.QUADWALK = {
       if (fp >= 1) { flash.visible = false; }
     }
     if (popT >= 0 && cur) { popT += dt; var pp = Math.min(1, popT / 0.5); var ov = 1 + Math.sin(pp * Math.PI) * 0.25; cur.scale.set(ss * ov * pp + 0.001, ss * (2 - ov) * pp + 0.001, ss * ov * pp + 0.001); if (pp >= 1) popT = -1; }
-    if (M_.cam > 0.01) zoomTarget = Math.max(zoomTarget, 1 + 0.68 * M_.cam);
+    var mcam = camM(); if (mcam > 0.01) zoomTarget = Math.max(zoomTarget, 1 + ((SL.duo() || SR.duo()) ? 1.1 : 0.55) * mcam);
     if (zoomOverride != null) zoomTarget = zoomOverride;
     camZoom += (zoomTarget - camZoom) * Math.min(1, Math.max(dt, 0.016) * 3);
   }
@@ -7645,7 +7647,9 @@ window.QUADWALK = {
     thib: { mount: 'loup', col: 0x6FA8FF, col2: 0xFFC23D, mountCall: 'howl' },
     val: { mount: 'lion', col: 0x3DDB8A, col2: 0xFFC23D, mountCall: 'roar' }
   };
-  var MP = { person: new V(-0.98, 0, 0.36), mount: new V(-2.0, 0, -0.55) };
+  function makeSlot(side) {
+  var SD = side, MP = { person: new V(SD * 0.98, 0, 0.36), mount: new V(SD * 2.0, 0, -0.55) };
+  function layout(duo) { if (duo) { MP.person.set(SD * 0.8, 0, -0.35); MP.mount.set(SD * 1.68, 0, 0.4); } else { MP.person.set(SD * 0.74, 0, -0.3); MP.mount.set(SD * 1.62, 0, 0.35); } disc.position.set((MP.person.x + MP.mount.x) / 2, 0, (MP.person.z + MP.mount.z) / 2); }
   var discMat = new T.MeshBasicMaterial({ color: 0x6FA8FF, transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide });
   var disc = new T.Group(); mentorRoot.add(disc);
   var discFloor = new T.Mesh(new T.CylinderGeometry(0.95, 1.02, 0.08, 64), phys(0x1E1868, { metalness: 0.4, roughness: 0.35, clearcoat: 1 })); discFloor.position.y = -0.056; discFloor.receiveShadow = true; disc.add(discFloor);
@@ -7695,10 +7699,11 @@ window.QUADWALK = {
     o = o || {};
     var cfg = MENTORS[who]; if (!cfg) return false;
     if (M_.t >= 0) mentorEnd(true);
-    M_ = { who: who, t: 0, person: null, mount: null, dur: o.dur || 12, leaveAt: -1, cam: M_.cam || 0, onDone: o.done || null, cheer: !!o.cheer, hop: 0, react: -1, onSay: o.say || null, said: {}, turn: 0, mt: 0, callT: -1, walk: null };
+    layout(!!o.duo);
+    M_ = { duo2: !!o.duo, who: who, t: 0, person: null, mount: null, dur: o.dur || 12, leaveAt: -1, cam: M_.cam || 0, onDone: o.done || null, cheer: !!o.cheer, hop: 0, react: -1, onSay: o.say || null, said: {}, turn: 0, mt: 0, callT: -1, walk: null };
     discMat.color.setHex(cfg.col); mentorLight.color.setHex(cfg.col); beamMat.color.setHex(cfg.col);
     M_.off = 0; M_.duo = null; M_.duoWait = true;
-    tryForm(who + '_duo', function (h) { if (M_.who !== who) return; M_.duoWait = false; if (h && !o.noDuo && !M_.walk) { M_.duo = h; M_.off = 1.7; h.visible = false; mentorRoot.add(h); } });
+    tryForm(who + '_duo', function (h) { if (M_.who !== who) return; M_.duoWait = false; if (h && !o.noDuo && !o.duo && SD < 0 && !M_.walk) { M_.duo = h; M_.off = 1.7; h.visible = false; mentorRoot.add(h); } });
     // prefer the real skeleton when its file exists, else the cartoon shader rig
     tryForm(who + '_anim', function (h) {
       if (M_.who !== who) return;
@@ -7766,17 +7771,17 @@ window.QUADWALK = {
       P.visible = true;
       if (pIn < 0.35) { var fall = pIn / 0.35; py = (1 - fall * fall) * (M_.off ? 0.35 : 0.9); sq = 1 + 0.12 * fall; }
       else if (pIn < 0.7) { var land = (pIn - 0.35) / 0.35; sq = 1 - 0.22 * Math.sin(land * Math.PI); }
-      if (pIn >= 0 && !M_.said.land) { M_.said.land = 1; mentorBurst(MP.person, cfg.col, cfg.col2, 34); camShake = 0.05; flashBoost = 0.6; if (hr) hr.pose('wave', 2.4); act('wave', 3); }
+      if (pIn >= 0 && !M_.said.land) { M_.said.land = 1; mentorBurst(MP.person, cfg.col, cfg.col2, 34); camShake = 0.05; flashBoost = 0.6; if (hr) hr.pose('wave', 2.4); if (!M_.duo2 || SD < 0) act('wave', 3); }
     }
-    if (M_.walk) { mIn = t; Mo.visible = true; if (!M_.said.mount) M_.said.mount = 1; if (t > 2.7 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); } }
+    if (M_.walk) { mIn = t; Mo.visible = true; if (!M_.said.mount) M_.said.mount = 1; if (t > 2.7 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(-SD * 0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); } }
     else if (mIn < 0) { Mo.visible = false; } else {
       Mo.visible = true; ms = popScale(Math.min(1, mIn / 0.55));
       if (!M_.said.mount) { M_.said.mount = 1; mentorBurst(MP.mount, cfg.col, cfg.col2, 26); if (cr) { cr.happy(2.5); } }
-      if (mIn > 0.9 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); }
+      if (mIn > 0.9 && !M_.said.call) { M_.said.call = 1; if (cr) cr.look(0, -0.42, 0, 1.4); if (cfg.mountCall === 'roar') camShake = 0.08; mentorBurst(MP.mount.clone().add(new V(-SD * 0.6, 0.6, 0.3)), cfg.col2, cfg.col, 14, 0.6); }
     }
     // speech beats (the page shows the words)
     if (t > 2.0 && !M_.said.s1) { M_.said.s1 = 1; if (hr) hr.pose('talk', 3.4); if (M_.onSay) M_.onSay(0); }
-    if (t > 6.2 && !M_.said.s2 && M_.dur > 8) { M_.said.s2 = 1; if (hr) hr.pose(M_.who === 'val' ? 'victory' : 'point', 2.2); if (M_.onSay) M_.onSay(1); mentorPower(M_.who); setTimeout(function () { act(M_.cheer ? 'victory' : 'jump', 3); }, 1000); }
+    if (t > 6.2 && !M_.said.s2 && M_.dur > 8) { M_.said.s2 = 1; if (hr) hr.pose(M_.who === 'val' ? 'victory' : 'point', 2.2); if (M_.onSay) M_.onSay(1); mentorPower(M_.who); if (!M_.duo2 || SD < 0) setTimeout(function () { act(M_.cheer ? 'victory' : 'jump', 3); }, 1000); }
     // leaving: a last wave, then they shrink into the beam
     if (lt >= 0) {
       if (!M_.said.bye) { M_.said.bye = 1; if (hr) hr.pose('wave', 1.2); if (cr) cr.happy(1.2); if (M_.onSay) M_.onSay(-1); }
@@ -7791,29 +7796,29 @@ window.QUADWALK = {
     // idle life: breathing bob, sway, look at the heroine now and then
     var bob = Math.sin(time * 2.1) * 0.006;
     P.position.set(MP.person.x, py + hopY, MP.person.z);
-    P.rotation.y = 0.5 + Math.sin(time * 0.5) * 0.06; P.rotation.z = Math.sin(time * 0.8) * 0.012;
+    P.rotation.y = -SD * (0.5 + Math.sin(time * 0.5) * 0.06); P.rotation.z = -SD * Math.sin(time * 0.8) * 0.012;
     var pS = (pIn < 0 ? 0.001 : 1) * ps;
     P.scale.set(pS * (1 + (1 - sq) * 0.5), pS * sq * (1 + bob), pS * (1 + (1 - sq) * 0.5));
-    if (hr) { if (Math.random() < dt * 0.25 && hr.current() === 'idle') hr.look(0.35, 0.05, 0.05, 1.6); hr.update(dt); }
+    if (hr) { if (Math.random() < dt * 0.25 && hr.current() === 'idle') hr.look(-SD * 0.35, 0.05, 0.05, 1.6); hr.update(dt); }
     var WK = M_.walk;
     if (WK) {
       // real walk: comes in from the left side of the stage, slows down, turns to face the heroine
       var wt = t, wDur = 2.6, wk = Math.min(1, Math.max(0, wt / wDur)), we = 1 - Math.pow(1 - wk, 2.2);
-      var sx = MP.mount.x - 3.0, mxp = sx + (MP.mount.x - sx) * we;
+      var sx = MP.mount.x + SD * 3.0, mxp = sx + (MP.mount.x - sx) * we;
       var leaving = lt >= 0 && lt > 0.2;
       Mo.position.set(mxp, 0, MP.mount.z);
       var face = Math.PI / 2, rest = 0.55 + Math.sin(time * 0.4) * 0.05 + M_.turn;
       var turnK = Math.min(1, Math.max(0, (wt - wDur + 0.5) / 0.7));
-      Mo.rotation.y = face + (rest - face) * (turnK * turnK * (3 - 2 * turnK));
+      Mo.rotation.y = -SD * (face + (rest - face) * (turnK * turnK * (3 - 2 * turnK)));
       var spd = wk < 1 ? (1 - wk) * 2.2 + 0.25 : 0; // stride speed follows the ground speed
       WK.w += ((wk < 1 ? 1 : 0) - WK.w) * Math.min(1, dt * 3);
       if (WK.mx) { WK.a.setEffectiveWeight(WK.w); WK.a.setEffectiveTimeScale(Math.max(0.35, spd) * 1.25); WK.mx.update(dt); }
       else if (WK.quad) { WK.quad.update(dt, wk < 1 ? Math.min(1, spd) : 0); if (t > 2.7 && !M_.said.qwag) { M_.said.qwag = 1; WK.quad.happy(2); } }
-      if (wk < 1 && Math.random() < 0.5) emit({ pos: mentorRoot.localToWorld(new V(mxp - 0.3, 0.04, MP.mount.z + rnd(-0.2, 0.2))), vel: new V(rnd(-0.4, -0.1), rnd(0.15, 0.4), rnd(-0.1, 0.1)), life: 0.7, s0: 0.06, s1: 0.015, cols: [cfg.col2, 0xFFFFFF] });
+      if (wk < 1 && Math.random() < 0.5) emit({ pos: mentorRoot.localToWorld(new V(mxp + SD * 0.3, 0.04, MP.mount.z + rnd(-0.2, 0.2))), vel: new V(-SD * rnd(-0.4, -0.1), rnd(0.15, 0.4), rnd(-0.1, 0.1)), life: 0.7, s0: 0.06, s1: 0.015, cols: [cfg.col2, 0xFFFFFF] });
       ms = Math.min(ms, wt < 0.05 ? 0.001 : 1); if (lt >= 0) ms = Math.min(ms, ps);
     } else {
     Mo.position.set(MP.mount.x, 0, MP.mount.z);
-    Mo.rotation.y = 0.55 + Math.sin(time * 0.4) * 0.05 + M_.turn;
+    Mo.rotation.y = -SD * (0.55 + Math.sin(time * 0.4) * 0.05 + M_.turn);
     }
     var mb = 1 + Math.sin(time * 1.7) * 0.01;
     Mo.scale.set(ms, ms * mb, ms);
@@ -7821,7 +7826,7 @@ window.QUADWALK = {
       M_.mt = (M_.mt || 0) - dt;
       if (M_.mt <= 0 && mIn > 2) { // little acts now and then: wag, look at the heroine, call again
         var r = Math.random(); M_.mt = 2.2 + Math.random() * 2.5;
-        if (r < 0.35) cr.happy(1.6); else if (r < 0.7) cr.look(0.45, 0.05, 0.1, 1.6); else if (r < 0.85) { cr.look(0, -0.42, 0, 1.2); M_.callT = 0; } else cr.look(-0.3, 0.2, -0.1, 1.2);
+        if (r < 0.35) cr.happy(1.6); else if (r < 0.7) cr.look(-SD * 0.45, 0.05, 0.1, 1.6); else if (r < 0.85) { cr.look(0, -0.42, 0, 1.2); M_.callT = 0; } else cr.look(SD * 0.3, 0.2, -0.1, 1.2);
       }
       var calling = M_.callT != null && M_.callT >= 0; if (calling) { M_.callT += dt; if (M_.callT > 1.2) M_.callT = -1; }
       if (mIn > 0.9 && mIn < 2.1) calling = true;
@@ -7842,14 +7847,14 @@ window.QUADWALK = {
   function mentorPower(who) {
     var P = MP.person;
     if (who === 'thib') return addFx({ dur: 2.6, step: function (t, dt, f) {
-      var hand = handPos(M_.person ? M_.person.localToWorld(new V(0.95, 1.12, 0.45)) : mentorRoot.localToWorld(new V(P.x + 0.55, 1.28, P.z + 0.35)), 0.05);
+      var hand = handPos(M_.person ? M_.person.localToWorld(new V(-SD * 0.95, 1.12, 0.45)) : mentorRoot.localToWorld(new V(P.x - SD * 0.55, 1.28, P.z + 0.35)), 0.05);
       if (t < 1.3) for (var i = 0; i < 5; i++) { var tgt = heroPoint(rnd(-0.2, 0.2), rnd(0.7, 1.6), rnd(-0.1, 0.2)); var v = tgt.sub(hand).multiplyScalar(rnd(1.1, 1.6));
         emit({ pos: hand.clone(), vel: v.add(new V(0, rnd(0.2, 0.6), 0)), life: rnd(0.6, 0.85), s0: 0.16, s1: 0.06, cols: [0xFFFFFF, 0x8FC2FF, 0xFFC23D], grav: 0.5, flick: 1 }); }
       if (once(f, 'ring', 0.9)) { flashBoost = 0.5; for (var j = 0; j < 70; j++) emit({ pos: new V(0, 0, 0), orbit: { a: j / 70 * 12.56, w: 2.2, r: 0.55, y: 0.1 + j / 70 * 1.9, vy: 0.25, vr: 0.08 }, life: 1.8, s0: 0.15, s1: 0.05, cols: [0xFFFFFF, 0x6FA8FF, 0xFFC23D], flick: 1 }); }
       if (once(f, 'star', 1.5)) { for (var k = 0; k < 24; k++) { var a = k / 24 * 6.28; emit({ pos: heroPoint(0, 2.05, 0), vel: new V(Math.cos(a) * 1.1, Math.sin(a) * 1.1, 0), life: 1.1, s0: 0.12, s1: 0.03, cols: [0xFFFFFF, 0xFFE08A, 0x6FA8FF], drag: 2.5 }); } }
     } });
     return addFx({ dur: 2.8, step: function (t, dt, f) {
-      var tip = handPos(M_.person ? M_.person.localToWorld(new V(-0.46, 1.8, 0.26)) : mentorRoot.localToWorld(new V(P.x - 0.42, 2.0, P.z + 0.35)), 0.55);
+      var tip = handPos(M_.person ? M_.person.localToWorld(new V(SD * 0.46, 1.8, 0.26)) : mentorRoot.localToWorld(new V(P.x + SD * 0.42, 2.0, P.z + 0.35)), 0.55);
       if (t < 1.1) for (var i = 0; i < 5; i++) emit({ pos: tip.clone().add(new V(rnd(-0.05, 0.05), rnd(-0.05, 0.05), 0)), vel: new V(rnd(-0.5, 0.5), rnd(0.2, 1.0), rnd(-0.5, 0.5)), life: 0.7, s0: 0.16, s1: 0.04, cols: [0xFFFFFF, 0x7CFFB0, 0x1E9E5A], flick: 1 });
       if (once(f, 'zap', 0.9)) { camShake = 0.06; flashBoost = 0.7; var b = makeBolt(0, 0); b.traverse(function (o) { if (o.material && o.material.color && o.material.opacity < 1) o.material.color.setHex(0x3DDB8A); }); bolts.push({ m: b, t: 0 });
         for (var j = 0; j < 40; j++) { var a = j / 40 * 6.28; emit({ pos: heroPoint(Math.cos(a) * 0.5, 0.05, Math.sin(a) * 0.5), vel: new V(Math.cos(a) * 0.4, rnd(0.6, 1.6), Math.sin(a) * 0.4), life: rnd(1.0, 1.6), s0: 0.15, s1: 0.04, cols: [0xFFFFFF, 0x7CFFB0, 0xFFC23D], drag: 0.8 }); } }
@@ -7857,6 +7862,14 @@ window.QUADWALK = {
     } });
   }
   function mentorTap() { if (M_.t < 0 || M_.leaveAt >= 0 || !M_.person) return; M_.react = 0; if (M_.walk && M_.walk.quad) M_.walk.quad.happy(1.8); var hr = M_.person.userData.hrig, cr = M_.mount && M_.mount.userData.rig; if (hr) hr.pose(Math.random() < 0.5 ? 'victory' : 'wave', 1.4); if (cr) cr.happy(1.6); }
+  return {
+    visit: mentorVisit, leave: mentorLeave, end: mentorEnd, update: updateMentor, tap: mentorTap,
+    cam: function () { return M_.cam || 0; }, duo: function () { return !!M_.duo2; },
+    active: function () { return M_.t >= 0 ? M_.who : null; }
+  };
+  }
+  var SL = makeSlot(-1), SR = makeSlot(1);
+  function camL() { return SL.cam(); } function camR() { return SR.cam(); } function camM() { return Math.max(SL.cam(), SR.cam()); }
 
 
   // ---- Soft cartoon glow (bloom): bright magic, lights and particles shine gently ----
@@ -7923,7 +7936,7 @@ window.QUADWALK = {
   });
   el.addEventListener('pointerup', function () { dragging = false; if (!moved) doTap(); });
 
-  function doTap() { mentorTap(); if (!act(Math.random() < 0.5 ? 'jump' : 'wave', 3.2)) jumpT = 0; if (opts.onTap) opts.onTap(); }
+  function doTap() { SL.tap(); SR.tap(); if (!act(Math.random() < 0.5 ? 'jump' : 'wave', 3.2)) jumpT = 0; if (opts.onTap) opts.onTap(); }
 
   // Animate
   var clock = new T.Clock(), blinkNext = 2;
@@ -7946,7 +7959,7 @@ window.QUADWALK = {
 
     var floatY = Math.sin(time * 1.8) * 0.04 + 0.06;
     hero.position.y = floatY + jy;
-    hero.rotation.y = rotY + spin - 0.45 * M_.cam;
+    hero.rotation.y = rotY + spin - 0.45 * camL() + 0.45 * camR();
     hero.scale.set(1 + (1 - squash) * 0.5, squash, 1 + (1 - squash) * 0.5);
     var fdt = lastFxT ? Math.min(0.05, Math.max(0, time - lastFxT)) : 0.016; lastFxT = time;
     hero.position.y += transLift; hero.rotation.y += transSpin;
@@ -7965,7 +7978,7 @@ window.QUADWALK = {
     wings.forEach(function (w) { w.p.rotation.y = (Math.sin(time * 3) * 0.25 + 0.15) * w.s; });
     auraMat.uniforms.t.value = time; auraMat.uniforms.k.value = 0.8 + Math.sin(time * 2) * 0.2;
     updatePet(time, dt, jy);
-    updateMentor(time, fdt);
+    SL.update(time, fdt); SR.update(time, fdt);
     if (mixer) {
       var mdt = (mixLastT ? Math.min(0.05, Math.max(0, time - mixLastT)) : 0.016) * timeScale; mixLastT = time;
       if (curAct && time > actEnd) { curAct.fadeOut(0.3); curAct = null; if (idleAct) { idleAct.enabled = true; idleAct.setEffectiveTimeScale(1); idleAct.fadeIn(0.3); } }
@@ -8003,10 +8016,10 @@ window.QUADWALK = {
       camera.position.set(_fs.x + _fd * 0.25 + (Math.random() - 0.5) * sk, _fs.y + 0.15 + (Math.random() - 0.5) * sk, _fs.z + _fd);
       camera.lookAt(_fs);
     } else {
-    var cxs = (camZoom - 1) * 0.9 * (1 - M_.cam) - 0.82 * M_.cam;
-    var vy = 1 - M_.cam * 0.75;
+    var cxs = (camZoom - 1) * 0.9 * (1 - camM()) - 0.8 * camL() + 0.8 * camR();
+    var vy = 1 - camM() * 0.75;
     camera.position.set(cxs + (Math.random() - 0.5) * sk, 1.35 + (camZoom - 1) * 1.1 * vy + (Math.random() - 0.5) * sk, baseDist * camZoom);
-    _lt.copy(camTarget); _lt.y += (camZoom - 1) * 1.0 * vy + M_.cam * 0.12; _lt.x += cxs; camera.lookAt(_lt);
+    _lt.copy(camTarget); _lt.y += (camZoom - 1) * 1.0 * vy + camM() * 0.12; _lt.x += cxs; camera.lookAt(_lt);
     }
     if (time - alphaFixT > 0.5) { alphaFixT = time; fixAdditive(); }
     if (bloom.on) bloom.render(); else renderer.render(scene, camera);
@@ -8041,7 +8054,7 @@ window.QUADWALK = {
   }
   function start() { if (running) return; running = true; resize(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); }
-  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, status: function () { return { hero: realCur ? realCur.userData.form : null, pet: cur ? cur.userData.form : null, want: curForm, giant: !!giant }; }, rotate: function (v) { rotY = v; }, focus: function (f) { camFocus = f; if (f) _fd = f.dist; }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, fly: goFly, breathe: breathe, power: function (n) { return power(n); }, setSky: function (m, i) { setSky(m, i); }, sky: function () { return skyMode; }, transform: transform, busy: function () { return transT >= 0; }, mentor: mentorVisit, mentorLeave: mentorLeave, mentorActive: function () { return M_.t >= 0 ? M_.who : null; }, preload: function (n) { loadForm(n, function () {}); } };
+  return { start: start, stop: stop, resize: resize, jump: function () { if (!act('victory', 5)) jumpT = 0; }, act: function (k, d) { return act(k, d); }, status: function () { return { hero: realCur ? realCur.userData.form : null, pet: cur ? cur.userData.form : null, want: curForm, giant: !!giant }; }, rotate: function (v) { rotY = v; }, focus: function (f) { camFocus = f; if (f) _fd = f.dist; }, setLevel: setLevel, setPet: setPet, petTap: petTap, giant: goGiant, fly: goFly, breathe: breathe, power: function (n) { return power(n); }, setSky: function (m, i) { setSky(m, i); }, sky: function () { return skyMode; }, transform: transform, busy: function () { return transT >= 0; }, mentor: function (w, o) { SR.end(true); return SL.visit(w, o); }, mentorDuo: function (o) { o = o || {}; SL.end(true); SR.end(true); var a = SL.visit('thib', { duo: true, dur: o.dur, cheer: o.cheer, say: o.sayThib, done: o.done }); SR.visit('val', { duo: true, dur: o.dur, cheer: o.cheer, say: o.sayVal, done: o.done }); return a; }, mentorLeave: function () { SL.leave(); SR.leave(); }, mentorActive: function () { return SL.active() || SR.active(); }, preload: function (n) { loadForm(n, function () {}); } };
 };
 </script>
 <script>(function () {
@@ -9001,17 +9014,37 @@ window.QUADWALK = {
   function callBrother(who, o) {
     o = o || {};
     if (!hero || !hero.mentor || broBusy) return;
-    broBusy = true; go('home'); guideBro();
+    broBusy = true; go('home'); guideBro(); visitOn();
     var L = broLines(who), a = o.cheer ? pick(L.c) : pick(L.a), b = pick(L.b), bye = pick(L.bye);
     setTimeout(function () {
-      hero.mentor(who, { dur: o.cheer ? 9.5 : 11.5, cheer: !!o.cheer, say: function (i) { broSay(who, i === 0 ? a : i === 1 ? b : bye); }, done: function () { broBusy = false; } });
-      setTimeout(function () { broBusy = false; }, 20000);
+      hero.mentor(who, { dur: o.cheer ? 9.5 : 11.5, cheer: !!o.cheer, say: function (i) { broSay(who, i === 0 ? a : i === 1 ? b : bye); }, done: function () { broBusy = false; visitOff(); } });
+      setTimeout(function () { broBusy = false; visitOff(); }, 20000);
     }, 350);
   }
+  function visitOn() { document.body.classList.add('visit'); }
+  function visitOff() { if (hero && hero.mentorActive && hero.mentorActive()) return; document.body.classList.remove('visit'); }
+  function callBoth(o) {
+    o = o || {};
+    if (!hero || !hero.mentorDuo || broBusy) return;
+    broBusy = true; go('home'); guideBro(); visitOn();
+    var T_ = broLines('thib'), V_ = broLines('val');
+    var ta = o.cheer ? pick(T_.c) : pick(T_.a), tb = pick(T_.b), va = o.cheer ? pick(V_.c) : pick(V_.a), vb = pick(V_.b);
+    var n = S.settings.childName || 'petite sœur';
+    setTimeout(function () {
+      hero.mentorDuo({ dur: 13, cheer: !!o.cheer,
+        sayThib: function (i) { if (i === 0) broSay('thib', ta); else if (i === 1) broSay('thib', tb); else broSay('thib', 'On repart en mission ensemble. À très vite ' + n + ' !'); },
+        sayVal: function (i) { if (i >= 0) setTimeout(function () { if (hero.mentorActive && hero.mentorActive()) broSay('val', i === 0 ? va : vb); }, 3000); },
+        done: function () { broBusy = false; visitOff(); } });
+      setTimeout(function () { broBusy = false; visitOff(); }, 26000);
+    }, 350);
+  }
+  window.__callBoth = function (o) { callBoth(o); };
   function renderBros() {
     var box = $('heroBros'); if (!box) return;
     box.innerHTML = ['thib', 'val'].map(function (k) { var b = BRO[k];
       return '<div class="ally"><img src="' + b.img + '" alt="' + esc(b.name) + '" onerror="this.style.visibility=\'hidden\'"><div class="t" style="flex:1;min-width:0"><b>' + esc(b.name) + '</b><span>' + esc(b.title) + '<br>avec ' + esc(b.mount) + '</span></div><button class="btn alt" style="width:auto;padding:8px 12px;margin:0;font-size:.92em;flex:none" data-bro="' + k + '">' + ic('play', 18) + 'Appeler</button></div>'; }).join('');
+    box.insertAdjacentHTML('beforeend', '<button class="btn" id="callBoth" style="margin-top:4px">' + ic('team') + 'Appeler Val et Thib ensemble</button>');
+    $('callBoth').addEventListener('click', function () { callBoth(); });
     box.querySelectorAll('[data-bro]').forEach(function (bt) { bt.addEventListener('click', function (e) { e.stopPropagation(); callBrother(bt.getAttribute('data-bro')); }); });
     box.querySelectorAll('.ally').forEach(function (a, i) { a.style.cursor = 'pointer'; a.addEventListener('click', function () { var k = i ? 'val' : 'thib'; showPoster('bro_' + k, '<p class="center sub">' + esc(BRO[k].title) + ' · avec ' + esc(BRO[k].mount) + '</p>'); }); });
   }
@@ -9022,7 +9055,7 @@ window.QUADWALK = {
     if (tipOn) return;
     if (S.broVisit === k || !hero || !hero.mentor || celebrating || $('ov').classList.contains('on')) return;
     S.broVisit = k; save();
-    callBrother(Math.random() < 0.5 ? 'thib' : 'val');
+    var r = Math.random(); if (r < 0.25) callBoth(); else callBrother(r < 0.62 ? 'thib' : 'val');
   }
   function renderTeam() {
     renderBros();
@@ -9423,7 +9456,7 @@ window.QUADWALK = {
         '<p class="sect" style="margin:6px 0 0">Pouvoirs débloqués</p><div style="display:flex;gap:6px;flex-wrap:wrap">' +
         TIERS.slice(0, lv).map(function (t) { return '<button class="btn alt" data-pw="' + t.n + '" style="margin:0;width:auto;flex:1;min-width:48px;padding:10px">' + t.n + '</button>'; }).join('') + '</div>' +
         '<p class="sect" style="margin:6px 0 0">Visites et scènes</p>' +
-        b('dThib', 'Visite de Thib et Alor') + b('dVal', 'Visite de Val et son lion') +
+        b('dThib', 'Visite de Thib et Alor') + b('dVal', 'Visite de Val et son lion') + b('dBoth', 'Visite de Val et Thib ensemble') +
         (lv >= 5 ? b('dGiant', 'Le dragon devient immense') : '') +
         b('dPoster', 'Poster du matin') + b('dLock', 'Écran « fin du temps de jeu »') +
         '<p class="hint center" style="margin:6px 0 0">Code de l\'espace des grands en démo : 0000</p>' +
@@ -9442,6 +9475,7 @@ window.QUADWALK = {
       on('dSurp', function () { closeOv(); S.surprise = { id: 'd' + Date.now(), text: 'Ce week-end, on t\'emmène manger une glace !' }; save(); go('home'); setTimeout(maybeSurprise, 500); });
       on('dThib', function () { closeOv(); setTimeout(function () { callBrother('thib'); }, 200); });
       on('dVal', function () { closeOv(); setTimeout(function () { callBrother('val'); }, 200); });
+      on('dBoth', function () { closeOv(); setTimeout(function () { callBoth(); }, 200); });
       on('dGiant', function () { closeOv(); go('home'); setTimeout(function () { if (hero) hero.giant(); }, 300); });
       on('dPoster', function () { closeOv(); S.posterDay = ''; save(); go('home'); setTimeout(morningPoster, 300); });
       on('dLock', function () { closeOv(); S.demoLock = true; save(); go('locked'); heroSay('Pour débloquer : bouton « Espace des grands », code 0000.'); });
