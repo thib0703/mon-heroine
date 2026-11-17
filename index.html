@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#120E3A">
 <title>Mon héroïne</title>
 <link rel="manifest" href="manifest.json">
+<script>if (/[?&#]demo\b/i.test(location.search + location.hash)) { document.querySelector('link[rel="manifest"]').href = "manifest-demo.json"; document.title = "Héroïne test"; }</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="firebase-config.js"></script>
@@ -8603,7 +8604,7 @@ window.QUADWALK = {
 
   // ---------- Time limit ----------
   var adultOpen = false;
-  function isLocked() { if (DEMO && S.demoLock) return true; return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= (S.settings.minutesPerDay + ((S.timeBonus || {})[today()] || 0)) * 60; }
+  function isLocked() { if (DEMO) return !!S.demoLock; return S.sync.role !== 'grand' && S.setupDone && S.letterDone && S.settings.minutesPerDay > 0 && day().seconds >= (S.settings.minutesPerDay + ((S.timeBonus || {})[today()] || 0)) * 60; }
   setInterval(function () {
     if (document.hidden || adultOpen || !S.setupDone || !S.letterDone || S.sync.role === 'grand') return;
     var d = day(); d.seconds++;
